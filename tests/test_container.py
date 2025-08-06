@@ -3,6 +3,7 @@
 import sys
 import os
 import warnings
+import platform as py_platform
 
 warnings.filterwarnings("ignore")
 current = os.path.dirname(os.path.realpath(__file__))
@@ -18,7 +19,7 @@ from tests.common import start_container, copy_home_env_to_container
 def setup_class():
     print("Starting Linux container")
     container_name = 'pytest'
-    platform = f"linux/{os.uname().machine}"
+    platform = f"linux/{py_platform.machine().lower()}"
     environment = CloudBase(aws_base).get_auth_config()
     container_id = start_container('cftest', container_name, platform=platform)
     copy_home_env_to_container(container_id, '/home/ubuntu', uid=1000, gid=1000)

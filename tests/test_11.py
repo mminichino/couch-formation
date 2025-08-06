@@ -8,6 +8,7 @@ import requests
 import base64
 import logging
 import json
+import platform as py_platform
 from requests.auth import AuthBase
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
@@ -51,7 +52,7 @@ class TestInstallAWS(object):
     @classmethod
     def setup_class(cls):
         logger.info("Starting Linux container")
-        platform = f"linux/{os.uname().machine}"
+        platform = f"linux/{py_platform.machine().lower()}"
         cls.environment = CloudBase(aws_base).get_auth_config()
         cls.container_id = start_container('cftest', cls.container_name, platform=platform)
         copy_home_env_to_container(cls.container_id, '/home/ubuntu', uid=1000, gid=1000)
