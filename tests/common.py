@@ -21,6 +21,8 @@ import warnings
 import logging
 import subprocess
 import configparser
+import platform as py_platform
+
 
 warnings.filterwarnings("ignore")
 current = os.path.dirname(os.path.realpath(__file__))
@@ -289,7 +291,7 @@ def start_container(image: str,
                     ports: Union[str, None] = None,
                     command: Union[str, list, None] = None) -> Container:
     if not platform:
-        platform = f"linux/{os.uname().machine}"
+        platform = f"linux/{py_platform.machine().lower()}"
     if not ports:
         ports = "80,443"
     docker_api = APIClient(base_url='unix://var/run/docker.sock')
