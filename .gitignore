@@ -169,3 +169,6 @@ tests/log/
 test/
 pytest.log
 failure.log
+
+# macOS
+.DS_Store
