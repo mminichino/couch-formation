@@ -140,42 +140,31 @@ def _load_profile_class(profile_name: str):
     return cls
 
 
-@instance_app.command(
-    "profile",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
+@instance_app.command("profile")
 def instance_profile(
-    ctx: typer.Context,
     group_name: str = typer.Argument(..., help="Instance group name."),
     profile_name: str = typer.Argument(..., help="Profile name (must match a module in couchformation.library)."),
+    set_vars: Optional[List[str]] = typer.Option(
+        None, "--set", help="Profile variable as name=value (repeatable).", metavar="name=value"
+    ),
 ) -> None:
     """Apply a profile to an instance group.
 
-    Profile-specific flags are forwarded to the profile class.  Run
-    cloudmgr instance profile <group> <profile> --help once profiles
-    expose their own options.
+    Pass profile-specific variables with --set name=value (repeatable).
     """
     profile_cls = _load_profile_class(profile_name)
-    profile_kwargs = _parse_extra_args(ctx.args)
+    profile_kwargs = _parse_set_vars(set_vars or [])
     profile_cls().apply(group_name, **profile_kwargs)
 
 
-def _parse_extra_args(args: List[str]) -> dict:
+def _parse_set_vars(pairs: List[str]) -> dict:
     result: dict = {}
-    it = iter(args)
-    for token in it:
-        if token.startswith("--"):
-            key = token.lstrip("-").replace("-", "_")
-            try:
-                peek = next(it)
-                if peek.startswith("--"):
-                    result[key] = True
-                    # put peek back by processing it in the outer loop
-                    result[peek.lstrip("-").replace("-", "_")] = True
-                else:
-                    result[key] = peek
-            except StopIteration:
-                result[key] = True
+    for pair in pairs:
+        if "=" not in pair:
+            typer.echo(f"Error: --set value must be in name=value format, got '{pair}'.", err=True)
+            raise typer.Exit(code=1)
+        key, _, value = pair.partition("=")
+        result[key.strip()] = value
     return result
 
 
