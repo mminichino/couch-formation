@@ -16,7 +16,8 @@ sys.path.append(current)
 
 from couchformation.network import NetworkDriver
 from couchformation.gcp.driver.base import CloudBase
-from couchformation.gcp.driver.network import Network, Subnet
+from couchformation.gcp.driver.network import Network
+from couchformation.gcp.driver.subnet import Subnet
 from couchformation.gcp.driver.instance import Instance
 from couchformation.gcp.driver.machine import MachineType
 from couchformation.gcp.driver.firewall import Firewall

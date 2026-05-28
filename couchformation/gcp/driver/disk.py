@@ -1,14 +1,18 @@
 ##
 ##
 
+import json
 import logging
 from typing import List, Union
-import googleapiclient.errors
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
+
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud.compute_v1.types import Disk
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 
 logger = logging.getLogger('couchformation.gcp.driver.disk')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class Disk(CloudBase):
@@ -20,63 +24,58 @@ class Disk(CloudBase):
         disk_list = []
 
         try:
-            request = self.gcp_client.disks().list(project=self.gcp_project, zone=zone)
-            while request is not None:
-                response = request.execute()
-
-                for disk in response['items']:
-                    disk_list.append(disk)
-                request = self.gcp_client.disks().list_next(previous_request=request, previous_response=response)
+            for disk in self.disk_client.list(project=self.gcp_project, zone=zone):
+                disk_list.append(resource_to_dict(disk))
         except Exception as err:
             raise GCPDriverError(f"error listing disks: {err}")
 
         if len(disk_list) == 0:
-            raise EmptyResultSet(f"no disks found")
-        else:
-            return disk_list
+            raise EmptyResultSet("no disks found")
+        return disk_list
 
     def create(self, name: str, zone: str, size: str, disk_type: str = "pd-ssd") -> str:
-        operation = {}
+        target_link = None
         disk_body = {
             "sizeGb": str(round(float(size))),
             "name": name,
-            "type": f"zones/{zone}/diskTypes/{disk_type}"
+            "type": f"zones/{zone}/diskTypes/{disk_type}",
         }
         try:
-            request = self.gcp_client.disks().insert(project=self.gcp_project, zone=zone, body=disk_body)
-            operation = request.execute()
-            self.wait_for_zone_operation(operation['name'], zone)
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not create disk: {err}")
+            operation = self.disk_client.insert(
+                project=self.gcp_project,
+                zone=zone,
+                disk_resource=Disk.from_json(json.dumps(disk_body)),
+            )
+            result = self.wait_for_zone_operation(operation.name, zone)
+            target_link = result.get('targetLink')
+        except gcp_exceptions.AlreadyExists:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not create disk: {err}")
         except Exception as err:
             raise GCPDriverError(f"error creating disk: {err}")
 
-        return operation.get('targetLink')
+        return target_link
 
     def delete(self, disk: str, zone: str) -> None:
         try:
-            request = self.gcp_client.disks().delete(project=self.gcp_project, zone=zone, disk=disk)
-            operation = request.execute()
-            self.wait_for_zone_operation(operation['name'], zone)
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not delete disk: {err}")
+            operation = self.disk_client.delete(project=self.gcp_project, zone=zone, disk=disk)
+            self.wait_for_zone_operation(operation.name, zone)
+        except gcp_exceptions.NotFound:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not delete disk: {err}")
         except Exception as err:
             raise GCPDriverError(f"error deleting disk: {err}")
 
     def details(self, disk: str, zone: str) -> Union[dict, None]:
         try:
-            request = self.gcp_client.disks().get(project=self.gcp_project, zone=zone, disk=disk)
-            result = request.execute()
-            return result
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not find disk: {err}")
+            result = self.disk_client.get(project=self.gcp_project, zone=zone, disk=disk)
+            return resource_to_dict(result)
+        except gcp_exceptions.NotFound:
             return None
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not find disk: {err}")
         except Exception as err:
             raise GCPDriverError(f"error getting disk: {err}")
 

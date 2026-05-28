@@ -5,109 +5,125 @@ import os.path
 import socket
 import logging
 import json
-import time
 import base64
 import sqlite3
-import googleapiclient.discovery
-import googleapiclient.errors
 import google.auth
 import google.auth.transport.requests
 from pathlib import Path
+from google.cloud import compute_v1
 from google.cloud import storage
+from google.cloud import dns
 from google.oauth2 import service_account
 from google.cloud import resourcemanager_v3
-from couchformation.config import AuthMode
-from couchformation.exception import FatalError, NonFatalError
-from couchformation.retry import retry
+from google.oauth2.credentials import Credentials
+
 from couchformation.gcp.driver.constants import get_auth_directory, get_default_credentials
+from couchformation.gcp.driver.operations import (
+    GCPDriverError,
+    GCPDriverTransientError,
+    GCPOperations,
+)
+from couchformation.models.cloud_auth import CloudLoginParameters, GCPCredentials
+from couchformation.models.public_cloud import PublicCloud
+from couchformation.retry import retry
 
 logger = logging.getLogger('couchformation.gcp.driver.base')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
-class GCPDriverError(FatalError):
-    pass
+class CloudBase(GCPOperations, PublicCloud):
 
-
-class GCPDriverTransientError(NonFatalError):
-    pass
-
-
-class EmptyResultSet(NonFatalError):
-    pass
-
-
-class CloudBase(object):
-    cache = {}
-
-    def __init__(self, parameters: dict):
-        self.parameters = parameters
+    def __init__(self, parameters: dict | CloudLoginParameters | None = None):
+        self.parameters: dict = {}
         self.auth_directory = get_auth_directory()
-        self.gcp_account = None
         self.gcp_project = None
         self.gcp_region = None
-        self.gcp_account_file = None
         self._service_account_email = None
         self._user_account_email = None
         self.gcp_zone_list = []
         self.gcp_zone = None
+        self.credentials: Credentials | None = None
+        self.instance_client = None
+        self.disk_client = None
+        self.dns_client = None
+        self.image_client = None
+        self.machine_type_client = None
+        self.subnetwork_client = None
+        self.network_client = None
+        self.firewall_client = None
+        self.zones_client = None
+        self.global_operations_client = None
+        self.region_operations_client = None
+        self.zone_operations_client = None
 
         socket.setdefaulttimeout(120)
 
-        if not parameters.get('auth_mode') or AuthMode[parameters.get('auth_mode')] == AuthMode.default:
-            if not CloudBase.cache.get('credentials') or not CloudBase.cache.get('gcp_project'):
-                self.credentials, self.gcp_project = self.default_auth()
-                CloudBase.cache['credentials'] = self.credentials
-                CloudBase.cache['gcp_project'] = self.gcp_project
-            else:
-                self.credentials = CloudBase.cache.get('credentials')
-                self.gcp_project = CloudBase.cache.get('gcp_project')
+        if parameters is not None:
+            login_params = CloudLoginParameters.from_parameters(parameters)
+            self.parameters = login_params.model_dump(exclude_none=True)
+            self.login(login_params)
 
-            if not CloudBase.cache.get('service_account_email') or not CloudBase.cache.get('user_account_email'):
-                self._service_account_email, self._user_account_email = self.get_account_email()
-                CloudBase.cache['service_account_email'] = self._service_account_email
-                CloudBase.cache['user_account_email'] = self._user_account_email
-            else:
-                self._service_account_email = CloudBase.cache.get('service_account_email')
-                self._user_account_email = CloudBase.cache.get('user_account_email')
-        elif AuthMode[parameters.get('auth_mode')] == AuthMode.file:
-            self.credentials, self.gcp_project, self._service_account_email = self.file_auth()
-        else:
-            raise GCPDriverError(f"Unsupported auth mode {parameters.get('auth_mode')}")
+    def login(self, parameters: CloudLoginParameters) -> None:
+        self.parameters = parameters.model_dump(exclude_none=True)
 
-        self.gcp_client = googleapiclient.discovery.build('compute', 'v1', credentials=self.credentials)
-        self.dns_client = googleapiclient.discovery.build('dns', 'v1', credentials=self.credentials)
+        if parameters.project:
+            self.gcp_project = parameters.project
+
+        try:
+            self.instance_client = compute_v1.InstancesClient()
+            self.firewall_client = compute_v1.FirewallsClient()
+            self.network_client = compute_v1.NetworksClient()
+            self.subnetwork_client = compute_v1.SubnetworksClient()
+            self.machine_type_client = compute_v1.MachineTypesClient()
+            self.image_client = compute_v1.ImagesClient()
+            self.disk_client = compute_v1.DisksClient()
+            self.zones_client = compute_v1.ZonesClient()
+            self.global_operations_client = compute_v1.GlobalOperationsClient()
+            self.region_operations_client = compute_v1.RegionOperationsClient()
+            self.zone_operations_client = compute_v1.ZoneOperationsClient()
+            self.dns_client = dns.Client()
+            self.credentials, self.gcp_project = google.auth.default()
+        except Exception as e:
+            raise GCPDriverError(f"Failed to initialize GCP client: {e}")
 
         if not self.gcp_project:
-            raise GCPDriverError(f"can not determine GCP project")
+            raise GCPDriverError("can not determine GCP project")
 
-        self.gcp_region = parameters.get('region')
-
-        if not self.gcp_region:
+        if parameters.region:
+            self.set_region(parameters.region)
+        elif self.parameters.get('region'):
+            self.set_region(self.parameters['region'])
+        else:
             raise GCPDriverError("region not specified")
 
         try:
             self.zones()
         except GCPDriverTransientError:
-            raise GCPDriverError(f"There is likely an auth config or firewall problem - make sure you can access the GCP API and use \"gcloud auth\" to configure access")
+            raise GCPDriverError(
+                "There is likely an auth config or firewall problem - make sure you can access "
+                "the GCP API and use \"gcloud auth\" to configure access"
+            )
         except Exception as err:
             raise GCPDriverError(f"error getting availability zones: {err}")
 
     def test_session(self):
         try:
-            storage_client = storage.Client(project=self.gcp_project, credentials=self.credentials)
+            storage_client = storage.Client(
+                project=self.gcp_project,
+                credentials=self.credentials,
+            )
             storage_client.list_buckets()
         except Exception as err:
             raise GCPDriverError(f"not authorized: {err}")
 
-    @staticmethod
-    def default_auth():
-        try:
-            credentials, project_id = google.auth.default()
-            return credentials, project_id
-        except Exception as err:
-            raise GCPDriverError(f"error connecting to GCP: {err}")
+    def credentials(self) -> GCPCredentials:
+        return GCPCredentials(
+            account_email=self.account_email,
+            project_id=self.gcp_project,
+            project_number=self.project_number,
+            default_service_account=self.default_sa,
+        )
 
     def get_account_email(self):
         try:
@@ -165,7 +181,9 @@ class CloudBase(object):
     def sa_auth(self, service_account_email):
         auth_data = self.get_account(service_account_email)
         if not auth_data:
-            raise GCPDriverError(f"Account {service_account_email} is not configured. Use gcloud auth to add the account.")
+            raise GCPDriverError(
+                f"Account {service_account_email} is not configured. Use gcloud auth to add the account."
+            )
         credentials, _ = google.auth.load_credentials_from_dict(auth_data)
         return credentials
 
@@ -190,7 +208,7 @@ class CloudBase(object):
             account_email = auth_data.get('client_email')
             return credentials, project_id, account_email
         else:
-            raise GCPDriverError(f"file auth selected: can not find application_default_credentials.json")
+            raise GCPDriverError("file auth selected: can not find application_default_credentials.json")
 
     @staticmethod
     def read_auth_file(auth_file: str):
@@ -202,14 +220,9 @@ class CloudBase(object):
     @retry()
     def zones(self) -> list:
         try:
-            request = self.gcp_client.zones().list(project=self.gcp_project)
-            while request is not None:
-                response = request.execute()
-                for zone in response['items']:
-                    if not zone['name'].startswith(self.gcp_region):
-                        continue
-                    self.gcp_zone_list.append(zone['name'])
-                request = self.gcp_client.zones().list_next(previous_request=request, previous_response=response)
+            for zone in self.zones_client.list(project=self.gcp_project):
+                if zone.name.startswith(self.gcp_region):
+                    self.gcp_zone_list.append(zone.name)
         except Exception as err:
             raise GCPDriverTransientError(f"error getting zones: {err}")
 
@@ -221,13 +234,17 @@ class CloudBase(object):
         self.gcp_zone = self.gcp_zone_list[0]
         return self.gcp_zone_list
 
-    @property
-    def region(self):
+    def get_region(self) -> str | None:
         return self.gcp_region
 
+    def set_region(self, region: str) -> None:
+        self.gcp_region = region
+        self.gcp_zone_list = []
+        self.gcp_zone = None
+
     @property
-    def account_file(self):
-        return self.gcp_account_file
+    def region(self):
+        return self.get_region()
 
     @property
     def project(self):
@@ -253,44 +270,3 @@ class CloudBase(object):
                 block.update({tag.lower() + '_tag': struct['labels'][tag]})
         block = dict(sorted(block.items()))
         return block
-
-    def wait_for_global_operation(self, operation):
-        while True:
-            result = self.gcp_client.globalOperations().get(
-                project=self.gcp_project,
-                operation=operation).execute()
-
-            if result['status'] == 'DONE':
-                if 'error' in result:
-                    raise GCPDriverError(result['error'])
-                return result
-
-            time.sleep(1)
-
-    def wait_for_regional_operation(self, operation):
-        while True:
-            result = self.gcp_client.regionOperations().get(
-                project=self.gcp_project,
-                region=self.gcp_region,
-                operation=operation).execute()
-
-            if result['status'] == 'DONE':
-                if 'error' in result:
-                    raise GCPDriverError(result['error'])
-                return result
-
-            time.sleep(1)
-
-    def wait_for_zone_operation(self, operation, zone):
-        while True:
-            result = self.gcp_client.zoneOperations().get(
-                project=self.gcp_project,
-                zone=zone,
-                operation=operation).execute()
-
-            if result['status'] == 'DONE':
-                if 'error' in result:
-                    raise GCPDriverError(result['error'])
-                return result
-
-            time.sleep(1)

@@ -1,9 +1,12 @@
-[tool.poetry]
+[project]
 name = "couchformation"
 description = "Couchbase Cloud Automation"
-version = "4.0.2"
+requires-python = ">=3.10"
+dynamic = ["version"]
 readme = "README.md"
-authors = ["Michael Minichino <info@unix.us.com>"]
+authors = [
+    {name = "Michael Minichino", email = "info@unix.us.com"}
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: Apache Software License",
@@ -16,118 +19,91 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 keywords = ["couchbase", "devops", "automation"]
-packages = [
-    { include = "couchformation" }
-]
-include = [
-    { path = "couchformation/data/*.yaml", format = ["sdist", "wheel"] }
+dependencies = [
+    "typer>=0.24.2",
+    "pydantic>=2.0.0",
+    "attrs>=23.1.0",
+    "boto3>=1.42.93",
+    "boto3-stubs>=1.42.93",
+    "botocore>=1.42.93",
+    "botocore[crt]",
+    "cryptography>=42.0.7",
+    "dnspython>=2.1.0",
+    "protobuf>=6.33.6,<7.0.0",
+    "google-api-core>=2.30.3",
+    "google-cloud-core>=2.6.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-cloud-compute>=1.47.0",
+    "google-cloud-storage>=3.10.1",
+    "google-cloud-dns>=0.37.0",
+    "google-cloud-network-management>=1.35.0",
+    "google-cloud-resource-manager>=1.17.0",
+    "Jinja2>=3.0.0",
+    "passlib>=1.7.4",
+    "pycryptodome>=3.20.0",
+    "pytz>=2021.3",
+    "pyvmomi>=8.0.0.1.1",
+    "requests>=2.31.0",
+    "urllib3>=1.26.16",
+    "azure-common>=1.1.28",
+    "azure-core>=1.29.6",
+    "azure-mgmt-resource>=23.1.1",
+    "azure-identity>=1.12.0",
+    "azure-mgmt-network>=25.3.0",
+    "azure-mgmt-compute>=31.0.0",
+    "azure-mgmt-core>=1.4.0",
+    "azure-mgmt-dns>=8.1.0",
+    "azure-mgmt-privatedns>=1.1.0",
+    "azure-mgmt-subscription>=3.1.1",
+    "ply>=3.11",
+    "sqlite-utils>=3.11",
+    "docker>=6.1.3",
+    "paramiko>=3.4.0",
+    "overrides>=7.4.0",
+    "PyYAML!=6.0.0,!=5.4.0,!=5.4.1",
+    "rsa>=4.9",
+    "pywinrm>=0.4.3",
+    "aiohttp>=3.9.3",
+    "psutil>=5.9.5",
+    "six>=1.16.0",
+    "libcapella>=1.0.20",
 ]
 
-[tool.poetry.urls]
-"Homepage" = "https://github.com/couchbaselabs/couch-formation-core"
-"Changelog" = "https://github.com/couchbaselabs/couch-formation-core/blob/main/CHANGELOG.md"
+[project.urls]
+"Homepage" = "https://github.com/mminichino/couch-formation"
+"Changelog" = "https://github.com/mminichino/couch-formation/blob/main/CHANGELOG.md"
 
-[tool.poetry.scripts]
+[project.scripts]
 cloudmgr = "couchformation.cli.cloudmgr:main"
 dbdump = "couchformation.cli.dbdump:main"
 
-[[tool.poetry.source]]
-name = "pypi-public"
-url = "https://pypi.org/simple/"
-
-[tool.poetry.dependencies]
-python = ">=3.8,<4"
-attrs = ">=23.1.0"
-boto3 = ">=1.34.17"
-botocore = ">=1.34.17"
-cryptography = ">=42.0.7"
-dnspython = ">=2.1.0"
-google-api-core = ">=2.4.0"
-google-api-python-client = ">=2.34.0"
-google-auth = ">=2.3.3"
-google-auth-httplib2 = ">=0.1.0"
-googleapis-common-protos = ">=1.54.0"
-google-cloud = ">=0.34.0"
-google-cloud-compute = ">=1.6.1"
-google-cloud-storage = ">=2.10.0"
-google-cloud-dns = ">=0.35.0"
-google-cloud-network-management = ">=1.5.4"
-google-cloud-resource-manager = ">=1.12.5"
-Jinja2 = ">=3.0.0"
-passlib = ">=1.7.4"
-pycryptodome = ">=3.20.0"
-pytz = ">=2021.3"
-pyvmomi = ">=8.0.0.1.1"
-requests = ">=2.31.0"
-urllib3 = ">=1.26.16"
-azure-common = ">=1.1.28"
-azure-core = ">=1.29.6"
-azure-mgmt-resource = ">=23.1.1"
-azure-identity = ">=1.12.0"
-azure-mgmt-network = ">=25.3.0"
-azure-mgmt-compute = ">=31.0.0"
-azure-mgmt-core = ">=1.4.0"
-azure-mgmt-dns = ">=8.1.0"
-azure-mgmt-privatedns = ">=1.1.0"
-ply = ">=3.11"
-sqlite-utils = ">=3.11"
-docker = ">=6.1.3"
-paramiko = ">=3.4.0"
-overrides = ">=7.4.0"
-PyYAML = { version = "!=6.0.0,!=5.4.0,!=5.4.1" }
-rsa = ">=4.9"
-pywinrm = ">=0.4.3"
-aiohttp = ">=3.9.3"
-psutil = ">=5.9.5"
-six = ">=1.16.0"
-libcapella = ">=1.0.20"
-
-[tool.poetry.group.test.dependencies]
-pytest = ">=5.0.0"
-pytest-asyncio = ">=0.20.1"
-pytest-rerunfailures = ">=10.0"
-pytest-order = ">=1.2.0"
-
-[tool.poetry.group.dev.dependencies]
-bumpversion = "^0.6.0"
-poetry-core = ">=1.9.0"
-setuptools = ">=65.5.0"
+[dependency-groups]
+test = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-rerunfailures>=16.1",
+    "pytest-mock>=3.14.1",
+]
+dev = [
+    "hatch",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.pytest.ini_options]
-asyncio_default_fixture_loop_scope = "session"
-asyncio_mode = "auto"
-addopts = "-rE --no-header -v -p no:warnings"
-log_file = "pytest.log"
-log_file_level = "DEBUG"
-pythonpath = [
-    ".",
-    "tests"
+[tool.hatch.version]
+path = "couchformation/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "couchformation/**",
+    "couchformation/data/*.yaml",
 ]
-testpaths = [
-    "tests",
-]
-python_classes = [
-    "Test*"
-]
-python_files = [
-    "test_[0-9]*.py"
-]
-markers = [
-    "cf_aws: marks a test as an AWS test",
-    "cf_gcp: marks a test as a GCP test",
-    "cf_azure: marks a test as a Azure test",
-    "cf_docker: marks a test as a Docker test",
-    "cf_capella: marks a test as a Capella test",
-    "cf_columnar: marks a test as a Columnar test",
-    "cf_windows: marks a test as a Windows safe test",
-    "cf_posix: marks a test as a macOS or Linux safe test",
-    "cf_cli: marks a test as a CLI simulation test",
-    "cf_basic: marks a test as a basic test"
-]
+
+[tool.hatch.build.targets.wheel]
+packages = ["couchformation"]
 
 [tool.tox]
 requires = ["tox>=4.19"]
@@ -136,34 +112,34 @@ no_package = true
 
 [tool.tox.env_run_base]
 skip_install = true
-allowlist_externals = ["poetry"]
+allowlist_externals = ["uv"]
 
 [tool.tox.env.py38]
 description = "Posix 3.8 full test"
 env_python = "python3.8"
-commands_pre = [["poetry", "env", "use", "3.8"], ["poetry", "install", "--sync"]]
-commands = [["poetry", "run", "pytest", "-m", "cf_posix"]]
+commands_pre = [["uv", "sync"]]
+commands = [["uv", "run", "pytest", "-m", "cf_posix"]]
 
 [tool.tox.env.py312]
 description = "Posix 3.12 full test"
 env_python = "python3.12"
-commands_pre = [["poetry", "env", "use", "3.12"], ["poetry", "install", "--sync"]]
-commands = [["poetry", "run", "pytest", "-m", "cf_posix"]]
+commands_pre = [["uv", "sync"]]
+commands = [["uv", "run", "pytest", "-m", "cf_posix"]]
 
 [tool.tox.env.py313]
 description = "Posix 3.13 full test"
 env_python = "python3.13"
-commands_pre = [["poetry", "env", "use", "3.13"], ["poetry", "install", "--sync"]]
-commands = [["poetry", "run", "pytest", "-m", "cf_posix"]]
+commands_pre = [["uv", "sync"]]
+commands = [["uv", "run", "pytest", "-m", "cf_posix"]]
 
 [tool.tox.env.win38]
 description = "Windows 3.8 full test"
 env_python = "python38"
-commands_pre = [["poetry", "env", "use", "38"], ["poetry", "install", "--sync"]]
-commands = [["poetry", "run", "pytest", "-m", "cf_windows"]]
+commands_pre = [["uv", "sync"]]
+commands = [["uv", "run", "pytest", "-m", "cf_windows"]]
 
 [tool.tox.env.win312]
 description = "Windows 3.12 full test"
 env_python = "python312"
-commands_pre = [["poetry", "env", "use", "312"], ["poetry", "install", "--sync"]]
-commands = [["poetry", "run", "pytest", "-m", "cf_windows"]]
+commands_pre = [["uv", "sync"]]
+commands = [["uv", "run", "pytest", "-m", "cf_windows"]]

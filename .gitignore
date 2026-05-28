@@ -166,3 +166,4 @@ tests/log/
 test/
 pytest.log
 failure.log
+prompts/

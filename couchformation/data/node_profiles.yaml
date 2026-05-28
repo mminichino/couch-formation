@@ -6,6 +6,7 @@ default:
       - windows
       - macos
     commands:
+      - curl -LsSf https://astral.sh/uv/install.sh | sudo -E bash -s -
       - curl -sfL https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/setup.sh | sudo -E bash -s - -s -p pyhostprep
   - provisioner: winrm
     root: true

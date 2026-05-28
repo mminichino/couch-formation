@@ -15,7 +15,7 @@ sys.path.append(current)
 
 from couchformation.project import Project
 from couchformation.network import NetworkDriver
-from couchformation.azure.driver.base import CloudBase
+from couchformation.azure.driver.resource_group import ResourceGroup
 from couchformation.azure.driver.network import Network, Subnet, SecurityGroup
 from couchformation.azure.driver.instance import Instance
 from couchformation.azure.driver.machine import MachineType
@@ -118,7 +118,7 @@ def azure_driver_1(args):
     warnings.filterwarnings("ignore")
     cidr_util = NetworkDriver()
     core = BaseConfig().create(args)
-    base = CloudBase(core)
+    base = ResourceGroup(core)
     config = NodeConfig().create(args)
     rg_name = f"{core.project}-rg"
     vpc_name = f"{core.project}-vpc"

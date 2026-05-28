@@ -3,17 +3,18 @@
 
 import logging
 import re
-import googleapiclient.discovery
-import googleapiclient.errors
 from datetime import datetime
 from typing import List, Union
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
+
+from google.api_core import exceptions as gcp_exceptions
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 from couchformation.gcp.driver.constants import GCPImageProjects
 import couchformation.constants as C
 
 logger = logging.getLogger('couchformation.gcp.driver.image')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class Image(CloudBase):
@@ -26,33 +27,30 @@ class Image(CloudBase):
         if not project:
             project = self.gcp_project
 
-        request = self.gcp_client.images().list(project=project)
-
-        while request is not None:
-            try:
-                response = request.execute()
-            except Exception as err:
-                raise GCPDriverError(f"error getting images: {err}")
-            if response.get('items') is None:
-                break
-            for image in response['items']:
-                if 'deprecated' in image:
-                    if (image['deprecated']['state'] == "DEPRECATED") or (image['deprecated']['state'] == "OBSOLETE"):
+        try:
+            for image in self.image_client.list(project=project):
+                image_data = resource_to_dict(image)
+                if 'deprecated' in image_data:
+                    state = image_data['deprecated'].get('state')
+                    if state in ("DEPRECATED", "OBSOLETE"):
                         continue
-                _image_is_arm = re.search('arm64', image['name'])
+                _image_is_arm = re.search('arm64', image_data['name'])
                 if architecture == 'arm64' and not _image_is_arm:
                     continue
                 elif _image_is_arm:
                     continue
-                image_block = {'name': image['name'],
-                               'link': image['selfLink'],
-                               'date': image['creationTimestamp']}
-                image_block.update(self.process_labels(image))
+                image_block = {
+                    'name': image_data['name'],
+                    'link': image_data['selfLink'],
+                    'date': image_data['creationTimestamp'],
+                }
+                image_block.update(self.process_labels(image_data))
                 image_list.append(image_block)
-            request = self.gcp_client.images().list_next(previous_request=request, previous_response=response)
+        except Exception as err:
+            raise GCPDriverError(f"error getting images: {err}")
 
         if len(image_list) == 0:
-            raise EmptyResultSet(f"no images found")
+            raise EmptyResultSet("no images found")
 
         return image_list
 
@@ -61,27 +59,26 @@ class Image(CloudBase):
             project = self.gcp_project
 
         try:
-            request = self.gcp_client.images().get(project=project, image=image)
-            image = request.execute()
+            result = self.image_client.get(project=project, image=image)
+            image_data = resource_to_dict(result)
+        except gcp_exceptions.NotFound:
+            raise EmptyResultSet(f"image {image} not found")
         except Exception as err:
-            if isinstance(err, googleapiclient.errors.HttpError):
-                error_details = err.error_details[0].get('reason')
-                if error_details == "notFound":
-                    raise EmptyResultSet(f"image {image} not found")
             raise GCPDriverError(f"image detail error: {err}")
 
-        image_block = {'name': image['name'],
-                       'link': image['selfLink'],
-                       'date': image['creationTimestamp']}
-        image_block.update(self.process_labels(image))
+        image_block = {
+            'name': image_data['name'],
+            'link': image_data['selfLink'],
+            'date': image_data['creationTimestamp'],
+        }
+        image_block.update(self.process_labels(image_data))
 
         return image_block
 
     def delete(self, image: str) -> None:
         try:
-            request = self.gcp_client.images().delete(project=self.gcp_project, image=image)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
+            operation = self.image_client.delete(project=self.gcp_project, image=image)
+            self.wait_for_global_operation(operation.name)
         except Exception as err:
             raise GCPDriverError(f"error deleting image: {err}")
 

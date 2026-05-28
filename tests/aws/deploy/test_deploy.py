@@ -1,19 +1,11 @@
-#!/usr/bin/env python3
+##
+##
 
-import os
-import sys
 import logging
 import warnings
 import unittest
 import pytest
 import time
-
-warnings.filterwarnings("ignore")
-current = os.path.dirname(os.path.realpath(__file__))
-parent = os.path.dirname(current)
-sys.path.append(parent)
-sys.path.append(current)
-
 from couchformation.network import NetworkDriver
 from couchformation.aws.driver.base import CloudBase
 from couchformation.aws.driver.network import Network, Subnet
@@ -27,6 +19,8 @@ from couchformation.aws.driver.image import Image
 from couchformation.resources.config_manager import ConfigurationManager
 from couchformation.ssh import SSHUtil
 from couchformation.util import parameter_to_dict
+
+warnings.filterwarnings("ignore")
 
 
 @pytest.mark.cf_aws

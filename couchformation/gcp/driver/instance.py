@@ -4,17 +4,20 @@
 import logging
 import base64
 import time
-import googleapiclient.errors
 import datetime
 import copy
 import json
 from typing import Union
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError
+
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud.compute_v1.types import Instance, Metadata
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, resource_to_dict
 from couchformation.ssh import SSHUtil
 
 logger = logging.getLogger('couchformation.gcp.driver.instance')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class Instance(CloudBase):
@@ -39,7 +42,7 @@ class Instance(CloudBase):
             disk_type: str = "pd-ssd",
             machine_type="n2-standard-2",
             virtualization: bool = False):
-        operation = {}
+        target_link = None
         instance_body = {
             "name": name,
             "zone": zone,
@@ -104,28 +107,30 @@ class Instance(CloudBase):
             })
 
         try:
-            request = self.gcp_client.instances().insert(project=self.gcp_project, zone=zone, body=instance_body)
-            operation = request.execute()
-            self.wait_for_zone_operation(operation['name'], zone)
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not create instance: {err}")
+            operation = self.instance_client.insert(
+                project=self.gcp_project,
+                zone=zone,
+                instance_resource=Instance.from_json(json.dumps(instance_body)),
+            )
+            result = self.wait_for_zone_operation(operation.name, zone)
+            target_link = result.get('targetLink')
+        except gcp_exceptions.AlreadyExists:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not create instance: {err}")
         except Exception as err:
             raise GCPDriverError(f"error creating instance: {err}")
 
-        return operation.get('targetLink')
+        return target_link
 
     def details(self, instance: str, zone: str) -> Union[dict, None]:
         try:
-            request = self.gcp_client.instances().get(project=self.gcp_project, zone=zone, instance=instance)
-            response = request.execute()
-            return response
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not find instance: {err}")
+            response = self.instance_client.get(project=self.gcp_project, zone=zone, instance=instance)
+            return resource_to_dict(response)
+        except gcp_exceptions.NotFound:
             return None
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not find instance: {err}")
         except Exception as err:
             raise GCPDriverError(f"error getting instance details: {err}")
 
@@ -138,13 +143,12 @@ class Instance(CloudBase):
 
     def terminate(self, instance: str, zone: str) -> None:
         try:
-            request = self.gcp_client.instances().delete(project=self.gcp_project, zone=zone, instance=instance)
-            operation = request.execute()
-            self.wait_for_zone_operation(operation['name'], zone)
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not terminate instance: {err}")
+            operation = self.instance_client.delete(project=self.gcp_project, zone=zone, instance=instance)
+            self.wait_for_zone_operation(operation.name, zone)
+        except gcp_exceptions.NotFound:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not terminate instance: {err}")
         except Exception as err:
             raise GCPDriverError(f"error terminating instance: {err}")
 
@@ -172,25 +176,26 @@ class Instance(CloudBase):
             'value': json.dumps(metadata_entry)
         }]
 
-        request = self.gcp_client.instances().setMetadata(project=self.gcp_project,
-                                                          zone=zone,
-                                                          instance=instance,
-                                                          body=new_metadata)
-        operation = request.execute()
-        self.wait_for_zone_operation(operation['name'], zone)
+        operation = self.instance_client.set_metadata(
+            project=self.gcp_project,
+            zone=zone,
+            instance=instance,
+            metadata_resource=Metadata.from_json(json.dumps(new_metadata)),
+        )
+        self.wait_for_zone_operation(operation.name, zone)
 
         logger.info(f"Waiting for instance {instance} password")
         while True:
-            request = self.gcp_client.instances().getSerialPortOutput(project=self.gcp_project,
-                                                                      zone=zone,
-                                                                      instance=instance,
-                                                                      port=4)
-            operation = request.execute()
-            serial_port_output = operation['contents']
+            serial_output = self.instance_client.get_serial_port_output(
+                project=self.gcp_project,
+                zone=zone,
+                instance=instance,
+                port=4,
+            )
+            serial_port_output = serial_output.contents
             if len(serial_port_output) != 0:
                 break
-            else:
-                time.sleep(2)
+            time.sleep(2)
 
         output = serial_port_output.split('\n')
         for data in output:

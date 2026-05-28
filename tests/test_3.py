@@ -15,7 +15,7 @@ sys.path.append(parent)
 sys.path.append(current)
 
 from couchformation.network import NetworkDriver
-from couchformation.azure.driver.base import CloudBase
+from couchformation.azure.driver.resource_group import ResourceGroup
 from couchformation.azure.driver.network import Network, Subnet, SecurityGroup
 from couchformation.azure.driver.instance import Instance
 from couchformation.azure.driver.machine import MachineType
@@ -76,7 +76,7 @@ class TestMainAzure(unittest.TestCase):
 
     def test_1(self):
         cidr_util = NetworkDriver()
-        base = CloudBase(self.parameters)
+        base = ResourceGroup(self.parameters)
 
         for net in Network(self.parameters).cidr_list:
             cidr_util.add_network(net)

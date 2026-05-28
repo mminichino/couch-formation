@@ -9,7 +9,7 @@ from itertools import cycle
 from typing import List
 from couchformation.network import NetworkDriver
 from couchformation.azure.driver.network import Network, Subnet, SecurityGroup
-from couchformation.azure.driver.base import CloudBase
+from couchformation.azure.driver.resource_group import ResourceGroup
 from couchformation.azure.driver.dns import DNS
 from couchformation.azure.driver.private_dns import PrivateDNS
 import couchformation.azure.driver.constants as C
@@ -55,7 +55,7 @@ class AzureNetwork(object):
         self.state = KeyValueStore(filename, document)
 
         self.az_network = Network(self.parameters)
-        self.az_base = CloudBase(self.parameters)
+        self.az_base = ResourceGroup(self.parameters)
 
         project_uid = MetadataManager(self.project).project_uid
         self.asset_prefix = f"cf-{project_uid}"

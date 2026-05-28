@@ -1,15 +1,18 @@
 ##
 ##
 
-import re
 import logging
+import re
 from typing import List, Union
-import googleapiclient.errors
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
+
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud import compute_v1
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 
 logger = logging.getLogger('couchformation.gcp.driver.firewall')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class Firewall(CloudBase):
@@ -21,20 +24,14 @@ class Firewall(CloudBase):
         firewall_list = []
 
         try:
-            request = self.gcp_client.firewalls().list(project=self.gcp_project)
-            while request is not None:
-                response = request.execute()
-
-                for firewall in response['items']:
-                    firewall_list.append(firewall)
-                request = self.gcp_client.firewalls().list_next(previous_request=request, previous_response=response)
+            for firewall in self.firewall_client.list(project=self.gcp_project):
+                firewall_list.append(resource_to_dict(firewall))
         except Exception as err:
             raise GCPDriverError(f"error listing firewall rules: {err}")
 
         if len(firewall_list) == 0:
-            raise EmptyResultSet(f"no firewalls found")
-        else:
-            return firewall_list
+            raise EmptyResultSet("no firewalls found")
+        return firewall_list
 
     def search(self, pattern: str) -> List[dict]:
         firewall_list = []
@@ -44,62 +41,53 @@ class Firewall(CloudBase):
         return firewall_list
 
     def create_ingress(self, name: str, network: str, cidr: str, protocol: str = "tcp", ports: Union[List[str], None] = None, udp_ports: Union[List[str], None] = None) -> str:
-        operation = {}
-        firewall_body = {
-            "sourceRanges": [
-                cidr,
-            ],
-            "description": "Couch Formation generated firewall rule",
-            "allowed": [
-                {
-                    "IPProtocol": protocol,
-                },
-            ],
-            "network": f"global/networks/{network}",
-            "name": name,
-        }
+        target_link = None
+        allowed = [compute_v1.Allowed(IP_protocol=protocol)]
         if ports:
-            firewall_body['allowed'][0]['ports'] = []
-            firewall_body['allowed'][0]['ports'].extend(ports)
+            allowed[0].ports = list(ports)
         if udp_ports:
-            firewall_body['allowed'].append(dict(
-                IPProtocol="udp",
-                ports=udp_ports
-            ))
+            allowed.append(compute_v1.Allowed(IP_protocol="udp", ports=list(udp_ports)))
+        firewall_body = compute_v1.Firewall(
+            name=name,
+            network=f"global/networks/{network}",
+            description="Couch Formation generated firewall rule",
+            source_ranges=[cidr],
+            allowed=allowed,
+        )
         try:
-            request = self.gcp_client.firewalls().insert(project=self.gcp_project, body=firewall_body)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not create firewall rule: {err}")
+            operation = self.firewall_client.insert(
+                project=self.gcp_project,
+                firewall_resource=firewall_body,
+            )
+            result = self.wait_for_global_operation(operation.name)
+            target_link = result.get('targetLink')
+        except gcp_exceptions.AlreadyExists:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not create firewall rule: {err}")
         except Exception as err:
             raise GCPDriverError(f"error creating firewall rule: {err}")
 
-        return operation.get('targetLink')
+        return target_link
 
     def delete(self, firewall: str) -> None:
         try:
-            request = self.gcp_client.firewalls().delete(project=self.gcp_project, firewall=firewall)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not delete firewall rule: {err}")
+            operation = self.firewall_client.delete(project=self.gcp_project, firewall=firewall)
+            self.wait_for_global_operation(operation.name)
+        except gcp_exceptions.NotFound:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not delete firewall rule: {err}")
         except Exception as err:
             raise GCPDriverError(f"error deleting firewall rule: {err}")
 
     def details(self, firewall: str) -> Union[dict, None]:
         try:
-            request = self.gcp_client.firewalls().get(project=self.gcp_project, firewall=firewall)
-            result = request.execute()
-            return result
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not find firewall entry: {err}")
+            result = self.firewall_client.get(project=self.gcp_project, firewall=firewall)
+            return resource_to_dict(result)
+        except gcp_exceptions.NotFound:
             return None
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not find firewall entry: {err}")
         except Exception as err:
             raise GCPDriverError(f"error getting firewall rule: {err}")

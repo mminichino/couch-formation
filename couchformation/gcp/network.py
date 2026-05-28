@@ -10,7 +10,8 @@ import uuid
 from itertools import cycle
 from typing import List
 from couchformation.network import NetworkDriver
-from couchformation.gcp.driver.network import Network, Subnet
+from couchformation.gcp.driver.network import Network
+from couchformation.gcp.driver.subnet import Subnet
 from couchformation.gcp.driver.firewall import Firewall
 from couchformation.gcp.driver.dns import DNS
 from couchformation.gcp.driver.base import CloudBase

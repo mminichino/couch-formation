@@ -4,7 +4,8 @@
 import logging
 import re
 from typing import List, Union
-from couchformation.azure.driver.base import CloudBase, AzureDriverError, EmptyResultSet
+from couchformation.azure.driver.base import AzureDriverError, EmptyResultSet
+from couchformation.azure.driver.resource_group import ResourceGroup
 from couchformation.azure.driver.constants import AzureImagePublishers
 import couchformation.constants as C
 
@@ -14,7 +15,7 @@ logging.getLogger("azure").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 
-class Image(CloudBase):
+class Image(ResourceGroup):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

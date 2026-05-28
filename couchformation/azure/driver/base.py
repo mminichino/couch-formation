@@ -1,51 +1,27 @@
 ##
 ##
 
-import time
 import logging
 import os
 import configparser
-from functools import wraps
-from typing import Union, List, Callable
+from typing import Union, List
 from azure.identity import AzureCliCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.dns import DnsManagementClient
 from azure.mgmt.privatedns import PrivateDnsManagementClient
 from azure.mgmt.resource.resources import ResourceManagementClient
-from azure.mgmt.resource.subscriptions import SubscriptionClient
-from couchformation.config import AuthMode
+from azure.mgmt.subscription import SubscriptionClient
 from couchformation.exception import FatalError, NonFatalError
 from couchformation.azure.driver.constants import get_auth_directory, get_config_default, get_config_main
 from couchformation.azure.driver.constants import AzureDiskTiers
-from couchformation.exec.process import cmd_exec
+from couchformation.models.cloud_auth import AzureCredentials, CloudLoginParameters
+from couchformation.models.public_cloud import PublicCloud
 
 logger = logging.getLogger('couchformation.azure.driver.base')
 logger.addHandler(logging.NullHandler())
 logging.getLogger("azure").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
-
-
-def auth_retry(retry_count=10,
-               factor=0.01
-               ) -> Callable:
-    def retry_handler(func):
-        @wraps(func)
-        def f_wrapper(*args, **kwargs):
-            for retry_number in range(retry_count + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as err:
-                    if retry_number == retry_count:
-                        logger.debug(f"{func.__name__} retry limit exceeded: {err}")
-                        raise
-                    login_cmd = ['az', 'login']
-                    cmd_exec(login_cmd)
-                    wait = factor
-                    wait *= (2 ** (retry_number + 1))
-                    time.sleep(wait)
-        return f_wrapper
-    return retry_handler
 
 
 class AzureDriverError(FatalError):
@@ -56,30 +32,54 @@ class EmptyResultSet(NonFatalError):
     pass
 
 
-class CloudBase(object):
+class CloudBase(PublicCloud):
 
-    def __init__(self, parameters: dict):
-        self.parameters = parameters
+    def __init__(self, parameters: dict | CloudLoginParameters | None = None):
+        self.parameters: dict = {}
         self.auth_directory = get_auth_directory()
         self.config_default = get_config_default()
         self.config_main = get_config_main()
         self.cloud_name = 'AzureCloud'
         self.local_context = None
-        self.azure_subscription_id = None
-        self.credential = None
         self.azure_resource_group = None
         self.azure_location = None
-        self.azure_availability_zones = []
+        self.azure_availability_zones: list = []
         self.azure_zone = None
+        self.credential = None
+        self.azure_subscription_id = None
+        self.azure_tenant_id = None
         self.subscription_client = None
+        self.resource_client = None
+        self.compute_client = None
+        self.network_client = None
+        self.dns_client = None
+        self.private_dns_client = None
 
-        if not parameters.get('auth_mode') or AuthMode[parameters.get('auth_mode')] == AuthMode.default:
-            self.credential, self.azure_subscription_id, self.azure_tenant_id = self.default_auth()
-        else:
-            raise AzureDriverError(f"Unsupported auth mode {parameters.get('auth_mode')}")
+        if parameters is not None:
+            login_params = CloudLoginParameters.from_parameters(parameters)
+            self.parameters = login_params.model_dump(exclude_none=True)
+            self.login(login_params)
 
-        if not self.credential or not self.azure_subscription_id:
+    def login(self, parameters: CloudLoginParameters) -> None:
+        self.parameters = parameters.model_dump(exclude_none=True)
+        self.read_config()
+
+        self.credential = AzureCliCredential(process_timeout=20)
+
+        if not self.credential:
             raise AzureDriverError("unauthorized (use az login)")
+
+        self.subscription_client = SubscriptionClient(self.credential)
+        self.subscriptions = self.subscription_client.subscriptions.list()
+        if not self.azure_subscription_id:
+            self.azure_subscription_id = next(
+                (str(s.subscription_id) for s in self.subscriptions),
+                None,
+            )
+        self.azure_tenant_id = self.credential.tenant_id
+
+        if not self.azure_subscription_id:
+            raise AzureDriverError("no subscription found (use az account set --subscription <subscription_id>)")
 
         self.resource_client = ResourceManagementClient(self.credential, self.azure_subscription_id)
         self.compute_client = ComputeManagementClient(self.credential, self.azure_subscription_id)
@@ -87,25 +87,23 @@ class CloudBase(object):
         self.dns_client = DnsManagementClient(self.credential, self.azure_subscription_id)
         self.private_dns_client = PrivateDnsManagementClient(self.credential, self.azure_subscription_id)
 
-        self.azure_location = parameters.get('region')
+        if parameters.region:
+            self.set_region(parameters.region)
+        elif self.parameters.get('region'):
+            self.set_region(self.parameters['region'])
 
-        self.zones()
-
-    @auth_retry()
-    def default_auth(self):
-        try:
-            credential = AzureCliCredential()
-            subscription_client = SubscriptionClient(credential)
-            subscriptions = subscription_client.subscriptions.list()
-            azure_subscription_id = next((s.subscription_id for s in subscriptions), None)
-            azure_tenant_id = credential.tenant_id
-            return credential, azure_subscription_id, azure_tenant_id
-        except Exception as err:
-            raise AzureDriverError(f"Azure: unauthorized (use az login): {err}")
+        if self.azure_location:
+            self.zones()
 
     def test_session(self):
         if len(self.azure_availability_zones) == 0:
             raise AzureDriverError(f"Unable to determine availability zones for location {self.azure_location}")
+
+    def credentials(self) -> AzureCredentials:
+        return AzureCredentials(
+            subscription_id=self.azure_subscription_id,
+            tenant_id=self.azure_tenant_id,
+        )
 
     @property
     def subscription_id(self):
@@ -174,70 +172,17 @@ class CloudBase(object):
         self.azure_zone = self.azure_availability_zones[0]
         return self.azure_availability_zones
 
-    def create_rg(self, name: str, location: str, tags: Union[dict, None] = None) -> dict:
-        if not tags:
-            tags = {}
-        if not tags.get('type'):
-            tags.update({"type": "couch-formation"})
-        try:
-            if self.resource_client.resource_groups.check_existence(name):
-                return self.get_rg(name, location)
-            else:
-                result = self.resource_client.resource_groups.create_or_update(
-                    name,
-                    {
-                        "location": location,
-                        "tags": tags
-                    }
-                )
-                return result.__dict__
-        except Exception as err:
-            raise AzureDriverError(f"error creating resource group: {err}")
+    def get_region(self) -> str | None:
+        return self.azure_location
 
-    def get_rg(self, name: str, location: str) -> Union[dict, None]:
-        try:
-            if self.resource_client.resource_groups.check_existence(name):
-                result = self.resource_client.resource_groups.get(name)
-                if result.location == location:
-                    return result.__dict__
-        except Exception as err:
-            raise AzureDriverError(f"error getting resource group: {err}")
+    def set_region(self, region: str) -> None:
+        self.azure_location = region
+        self.azure_availability_zones = []
+        self.azure_zone = None
 
-        return None
-
-    def list_rg(self, location: Union[str, None] = None, filter_keys_exist: Union[List[str], None] = None) -> List[dict]:
-        rg_list = []
-
-        try:
-            resource_groups = self.resource_client.resource_groups.list()
-        except Exception as err:
-            raise AzureDriverError(f"error getting resource groups: {err}")
-
-        for group in list(resource_groups):
-            if location:
-                if group.location != location:
-                    continue
-            rg_block = {'location': group.location,
-                        'name': group.name,
-                        'id': group.id}
-            rg_block.update(self.process_tags(group.tags))
-            if filter_keys_exist:
-                if not all(key in rg_block for key in filter_keys_exist):
-                    continue
-            rg_list.append(rg_block)
-
-        if len(rg_list) == 0:
-            raise EmptyResultSet(f"no resource groups found")
-
-        return rg_list
-
-    def delete_rg(self, name: str):
-        try:
-            if self.resource_client.resource_groups.check_existence(name):
-                request = self.resource_client.resource_groups.begin_delete(name)
-                request.wait()
-        except Exception as err:
-            raise AzureDriverError(f"error deleting resource group: {err}")
+    @property
+    def region(self):
+        return self.get_region()
 
     def list_locations(self) -> List[dict]:
         location_list = []
@@ -258,15 +203,3 @@ class CloudBase(object):
                 block.update({tag.lower() + '_tag': struct[tag]})
         block = dict(sorted(block.items()))
         return block
-
-    def rg_switch(self):
-        image_rg = f"cf-image-{self.azure_location}-rg"
-        if self.get_rg(image_rg, self.azure_location):
-            resource_group = image_rg
-        else:
-            resource_group = self.azure_resource_group
-        return resource_group
-
-    @property
-    def region(self):
-        return self.azure_location

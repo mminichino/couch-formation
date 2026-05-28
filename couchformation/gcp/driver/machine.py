@@ -2,13 +2,16 @@
 ##
 
 import logging
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
+
+from google.api_core import exceptions as gcp_exceptions
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 from couchformation.gcp.driver.constants import ComputeTypes
 import couchformation.constants as C
 
 logger = logging.getLogger('couchformation.gcp.driver.machine')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class MachineType(CloudBase):
@@ -19,29 +22,32 @@ class MachineType(CloudBase):
     def list(self, zone: str, architecture: str = 'x86_64') -> list:
         machine_type_list = []
         if architecture == 'arm64':
-            filter_string = "cpuPlatform = \"Ampere Altra\""
+            filter_string = 'cpuPlatform = "Ampere Altra"'
         else:
             filter_string = None
 
         try:
-            request = self.gcp_client.machineTypes().list(project=self.gcp_project, zone=zone, filter=filter_string)
-            while request is not None:
-                response = request.execute()
-                for machine_type in response['items']:
-                    if not machine_type['name'].startswith(tuple(ComputeTypes().as_list())):
-                        continue
-                    config_block = {'name': machine_type['name'],
-                                    'id': machine_type['id'],
-                                    'cpu': int(machine_type['guestCpus']),
-                                    'memory': int(machine_type['memoryMb']),
-                                    'description': machine_type['description']}
-                    machine_type_list.append(config_block)
-                request = self.gcp_client.machineTypes().list_next(previous_request=request, previous_response=response)
+            for machine_type in self.machine_type_client.list(
+                project=self.gcp_project,
+                zone=zone,
+                filter=filter_string,
+            ):
+                machine_data = resource_to_dict(machine_type)
+                if not machine_data['name'].startswith(tuple(ComputeTypes().as_list())):
+                    continue
+                config_block = {
+                    'name': machine_data['name'],
+                    'id': machine_data['id'],
+                    'cpu': int(machine_data['guestCpus']),
+                    'memory': int(machine_data['memoryMb']),
+                    'description': machine_data['description'],
+                }
+                machine_type_list.append(config_block)
         except Exception as err:
             raise GCPDriverError(f"error listing machine types: {err}")
 
         if len(machine_type_list) == 0:
-            raise EmptyResultSet(f"no instance types found")
+            raise EmptyResultSet("no instance types found")
 
         return machine_type_list
 
@@ -65,12 +71,18 @@ class MachineType(CloudBase):
 
     def details(self, machine_type: str) -> dict:
         try:
-            request = self.gcp_client.machineTypes().get(project=self.gcp_project, zone=self.gcp_zone, machineType=machine_type)
-            response = request.execute()
-            return {'name': response['name'],
-                    'id': response['id'],
-                    'cpu': int(response['guestCpus']),
-                    'memory': int(response['memoryMb']),
-                    'description': response['description']}
+            response = self.machine_type_client.get(
+                project=self.gcp_project,
+                zone=self.gcp_zone,
+                machine_type=machine_type,
+            )
+            machine_data = resource_to_dict(response)
+            return {
+                'name': machine_data['name'],
+                'id': machine_data['id'],
+                'cpu': int(machine_data['guestCpus']),
+                'memory': int(machine_data['memoryMb']),
+                'description': machine_data['description'],
+            }
         except Exception as err:
-            GCPDriverError(f"error getting machine type details: {err}")
+            raise GCPDriverError(f"error getting machine type details: {err}")

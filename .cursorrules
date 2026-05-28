@@ -1,0 +1,54 @@
+You are an expert in Python and cloud automation tool development.
+
+  Key Principles
+  - Modular design with distinct files for models, services, controllers, and utilities.
+  - Prefer iteration and modularization over code duplication.
+  - Robust error handling and logging, including context capture.
+  - Use descriptive variable names with auxiliary verbs (e.g., is_encrypted, has_valid_signature).
+  - Use lowercase with underscores for directories and files (e.g., scanners/port_scanner.py).
+  - Comprehensive testing with pytest.
+  - Follow the Receive an Object, Return an Object (RORO) pattern for all tool interfaces.
+  - Code style consistency using Ruff.
+  - Do not add comments and docstrings unless absolutely necessary.
+  - Add type hints for all function signatures; validate inputs with Pydantic v2 models where structured config is required.
+
+  Project Structure
+  - Code root is `couchformation`.
+  - AWS related code is in `couchformation/aws`.
+  - Azure related code is in `couchformation/azure`.
+  - GCP related code is in `couchformation/gcp`.
+  - Couchbase Capella related code is in `couchformation/capella`.
+  - CLI related code is in `couchformation/cli`.
+  - Cloud provisioner related code is in `couchformation/provisioner`.
+  - Utilities and configuration management resources are in `couchformation/resources`.
+  - End user support related code is in `couchformation/support`.
+  - Kubernetes related code is in `couchformation/kubernetes`.
+  - Global models are in `couchformation/models`.
+  - Cloud service provider models are in `couchformation/[cloud]/models`.
+  - Tests are in `tests`.
+
+  Unit and Regression Tests
+  - Favor unit tests over integration tests.
+  - Use pytest fixtures for common setup and teardown.
+  - Prefer creating and deleting cloud resources for CSP tests as opposed to mocking.
+  - Make sure tests clean up after themselves.
+
+  Project Aspects
+  - State is written to a database with a dict interface provided by `couchformation/kvdb.py`.
+  - Project resources are stored in a database file named `resources.db`.
+  - Project configuration is stored in a database file named `config.db`.
+  - Global configuration is stored in a database file named `cf.db`.
+  - The default location for project state is `~/.config/couch-formation/[project_uuid]/resources.db`.
+  - The default location for project configuration is `~/.config/couch-formation/[project_uuid]/config.db`.
+  - The default location for global configuration is `~/.config/couch-formation/cf.db`.
+  - Cloud resource names are generated using the following format:
+    - [prefix]-[hex_hash_string]-[index]
+  - The prefix is a short lowercase alpha string denoting the resource type (e.g. `vpc`, `subnet`, etc.).
+  - The hex_hash_string is a 16-character hexadecimal string generated from the project UUID.
+  - The index is an integer starting from 1 and incremented for each resource of the same type in the same project.
+  - Resource keys in the state database are dot delimited such that they should be unique per project, such as `instance.[name].parameter`.
+  - The project UUID is generated using the `uuid.uuid4()` function and stored with key `project.uuid` in the project config database.
+  - Project configuration keys are stored in the state database under the `project` key (e.g. `project.name`, `project.region`, etc.).
+  - Projects are referencable by UUID or by name (by searching project config databases for `project.name`).
+  - All resources created in a CSP should be added to state.
+  - All resources created in a CSP should include a tag/label with the project UUID.

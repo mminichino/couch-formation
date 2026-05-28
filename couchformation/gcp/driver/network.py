@@ -3,12 +3,16 @@
 
 import logging
 from typing import List, Union
-import googleapiclient.errors
-from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
+
+from google.api_core import exceptions as gcp_exceptions
+from google.cloud import compute_v1
+
+from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
+from couchformation.gcp.driver.subnet import Subnet
 
 logger = logging.getLogger('couchformation.gcp.driver.network')
 logger.addHandler(logging.NullHandler())
-logging.getLogger("googleapiclient").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
 
 
 class Network(CloudBase):
@@ -20,33 +24,30 @@ class Network(CloudBase):
         network_list = []
 
         try:
-            request = self.gcp_client.networks().list(project=self.gcp_project)
-            while request is not None:
-                response = request.execute()
-
-                for network in response['items']:
-                    subnet_list = []
-                    for subnet in network.get('subnetworks', []):
-                        subnet_name = subnet.rsplit('/', 4)[-1]
-                        region_name = subnet.rsplit('/', 4)[-3]
-                        if region_name != self.region:
-                            continue
-                        result = Subnet(self.parameters).details(subnet_name)
-                        subnet_list.append(result)
-                    network_block = {'cidr': network.get('IPv4Range', None),
-                                     'name': network['name'],
-                                     'description': network.get('description', None),
-                                     'subnets': subnet_list,
-                                     'id': network['id']}
-                    network_list.append(network_block)
-                request = self.gcp_client.networks().list_next(previous_request=request, previous_response=response)
+            for network in self.network_client.list(project=self.gcp_project):
+                network_data = resource_to_dict(network)
+                subnet_list = []
+                for subnet in network_data.get('subnetworks', []):
+                    subnet_name = subnet.rsplit('/', 4)[-1]
+                    region_name = subnet.rsplit('/', 4)[-3]
+                    if region_name != self.region:
+                        continue
+                    result = Subnet(self.parameters).details(subnet_name)
+                    subnet_list.append(result)
+                network_block = {
+                    'cidr': network_data.get('IPv4Range'),
+                    'name': network_data['name'],
+                    'description': network_data.get('description'),
+                    'subnets': subnet_list,
+                    'id': network_data['id'],
+                }
+                network_list.append(network_block)
         except Exception as err:
             raise GCPDriverError(f"error listing networks: {err}")
 
         if len(network_list) == 0:
-            raise EmptyResultSet(f"no networks found")
-        else:
-            return network_list
+            raise EmptyResultSet("no networks found")
+        return network_list
 
     @property
     def cidr_list(self):
@@ -58,174 +59,80 @@ class Network(CloudBase):
             return iter(())
 
     def create(self, name: str) -> str:
-        operation = {}
-        network_body = {
-            "name": name,
-            "autoCreateSubnetworks": False
-        }
+        target_link = None
         try:
-            request = self.gcp_client.networks().insert(project=self.gcp_project, body=network_body)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-            return operation.get('targetLink')
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not create network: {err}")
+            operation = self.network_client.insert(
+                project=self.gcp_project,
+                network_resource=compute_v1.Network(name=name, auto_create_subnetworks=False),
+            )
+            result = self.wait_for_global_operation(operation.name)
+            target_link = result.get('targetLink')
+            return target_link
+        except gcp_exceptions.AlreadyExists:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not create network: {err}")
         except Exception as err:
             raise GCPDriverError(f"error creating network: {err}")
 
-        return operation.get('targetLink')
+        return target_link
 
     def delete(self, network: str) -> None:
         try:
-            request = self.gcp_client.networks().delete(project=self.gcp_project, network=network)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not delete network: {err}")
+            operation = self.network_client.delete(project=self.gcp_project, network=network)
+            self.wait_for_global_operation(operation.name)
+        except gcp_exceptions.NotFound:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not delete network: {err}")
         except Exception as err:
             raise GCPDriverError(f"error deleting network: {err}")
 
     def details(self, network: str) -> Union[dict, None]:
         try:
-            request = self.gcp_client.networks().get(project=self.gcp_project, network=network)
-            result = request.execute()
-            return result
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not find network: {err}")
+            result = self.network_client.get(project=self.gcp_project, network=network)
+            return resource_to_dict(result)
+        except gcp_exceptions.NotFound:
             return None
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not find network: {err}")
         except Exception as err:
             raise GCPDriverError(f"error getting network: {err}")
 
     def add_peering(self, name: str, network: str, peer_project: str, peer_network: str) -> None:
-        peering_body = {
-            "networkPeering": {
-                "name": name,
-                "network": f"projects/{peer_project}/global/networks/{peer_network}",
-                "exchangeSubnetRoutes": True
-            }
-        }
+        peering_body = compute_v1.NetworksAddPeeringRequest(
+            network_peering=compute_v1.NetworkPeering(
+                name=name,
+                network=f"projects/{peer_project}/global/networks/{peer_network}",
+                exchange_subnet_routes=True,
+            )
+        )
         try:
-            request = self.gcp_client.networks().addPeering(project=self.gcp_project, network=network, body=peering_body)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not add network peering: {err}")
+            operation = self.network_client.add_peering(
+                project=self.gcp_project,
+                network=network,
+                networks_add_peering_request_resource=peering_body,
+            )
+            self.wait_for_global_operation(operation.name)
+        except gcp_exceptions.AlreadyExists:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not add network peering: {err}")
         except Exception as err:
             raise GCPDriverError(f"error adding network peering: {err}")
 
     def remove_peering(self, name: str, network: str) -> None:
-        remove_body = {
-            "name": name
-        }
+        remove_body = compute_v1.NetworksRemovePeeringRequest(name=name)
         try:
-            request = self.gcp_client.networks().removePeering(project=self.gcp_project, network=network, body=remove_body)
-            operation = request.execute()
-            self.wait_for_global_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not remove network peering: {err}")
+            operation = self.network_client.remove_peering(
+                project=self.gcp_project,
+                network=network,
+                networks_remove_peering_request_resource=remove_body,
+            )
+            self.wait_for_global_operation(operation.name)
+        except gcp_exceptions.NotFound:
+            pass
+        except gcp_exceptions.GoogleAPICallError as err:
+            raise GCPDriverError(f"can not remove network peering: {err}")
         except Exception as err:
             raise GCPDriverError(f"error removing network peering: {err}")
-
-
-class Subnet(CloudBase):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def list(self, network: str, region: Union[str, None] = None) -> List[dict]:
-        subnet_list = []
-
-        try:
-            request = self.gcp_client.subnetworks().list(project=self.gcp_project, region=self.gcp_region)
-            while request is not None:
-                response = request.execute()
-                for subnet in response['items']:
-                    network_name = subnet['network'].rsplit('/', 1)[-1]
-                    region_name = subnet['region'].rsplit('/', 1)[-1]
-                    if region:
-                        if region != region_name:
-                            continue
-                    if network != network_name:
-                        continue
-                    subnet_block = {'cidr': subnet['ipCidrRange'],
-                                    'name': subnet['name'],
-                                    'description': subnet.get('description', None),
-                                    'gateway': subnet['gatewayAddress'],
-                                    'network': network_name,
-                                    'region': region_name,
-                                    'id': subnet['id']}
-                    subnet_list.append(subnet_block)
-                request = self.gcp_client.subnetworks().list_next(previous_request=request, previous_response=response)
-        except Exception as err:
-            raise GCPDriverError(f"error listing subnets: {err}")
-
-        if len(subnet_list) == 0:
-            raise EmptyResultSet(f"no subnets found")
-        else:
-            return subnet_list
-
-    def create(self, name: str, network: str, cidr: str) -> str:
-        operation = {}
-        network_info = Network(self.parameters).details(network)
-        subnetwork_body = {
-            "name": name,
-            "network": network_info['selfLink'],
-            "ipCidrRange": cidr,
-            "region": self.gcp_region
-        }
-        try:
-            request = self.gcp_client.subnetworks().insert(project=self.gcp_project, region=self.gcp_region, body=subnetwork_body)
-            operation = request.execute()
-            self.wait_for_regional_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "alreadyExists":
-                raise GCPDriverError(f"can not create subnet: {err}")
-        except Exception as err:
-            raise GCPDriverError(f"error creating subnet: {err}")
-
-        return operation.get('targetLink')
-
-    def delete(self, subnet: str) -> None:
-        try:
-            request = self.gcp_client.subnetworks().delete(project=self.gcp_project, region=self.gcp_region, subnetwork=subnet)
-            operation = request.execute()
-            self.wait_for_regional_operation(operation['name'])
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not delete subnet: {err}")
-        except Exception as err:
-            raise GCPDriverError(f"error deleting subnet: {err}")
-
-    def details(self, subnet: str) -> Union[dict, None]:
-        try:
-            request = self.gcp_client.subnetworks().get(project=self.gcp_project, region=self.gcp_region, subnetwork=subnet)
-            result = request.execute()
-            network_name = result['network'].rsplit('/', 1)[-1]
-            region_name = result['region'].rsplit('/', 1)[-1]
-            subnet_block = {'cidr': result['ipCidrRange'],
-                            'name': result['name'],
-                            'description': result.get('description', None),
-                            'gateway': result['gatewayAddress'],
-                            'network': network_name,
-                            'region': region_name,
-                            'id': result['id']}
-            return subnet_block
-        except googleapiclient.errors.HttpError as err:
-            error_details = err.error_details[0].get('reason')
-            if error_details != "notFound":
-                raise GCPDriverError(f"can not find subnet: {err}")
-            return None
-        except Exception as err:
-            raise GCPDriverError(f"error getting subnet: {err}")
