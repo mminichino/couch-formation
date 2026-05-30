@@ -37,10 +37,8 @@ class BasicAuth(AuthBase):
         return r
 
 
-@pytest.mark.cf_columnar
-@pytest.mark.cf_windows
-@pytest.mark.cf_posix
-@pytest.mark.order(8)
+@pytest.mark.cf_columnar_cli
+@pytest.mark.order(1)
 class TestMainColumnar(unittest.TestCase):
 
     def setUp(self):

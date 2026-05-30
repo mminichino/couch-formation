@@ -42,6 +42,18 @@ PARAMETERS = {
     "ssh.key": {
         'type': 'string',
         'mutable': True
+    },
+    "aws.domain": {
+        'type': 'string',
+        'mutable': True
+    },
+    "gcp.domain": {
+        'type': 'string',
+        'mutable': True
+    },
+    "azure.domain": {
+        'type': 'string',
+        'mutable': True
     }
 }
 

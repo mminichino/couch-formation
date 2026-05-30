@@ -6,7 +6,7 @@ import logging
 from typing import List, Union
 
 from google.api_core import exceptions as gcp_exceptions
-from google.cloud.compute_v1.types import Disk
+from google.cloud.compute_v1.types import Disk as GCPDisk
 
 from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 
@@ -33,8 +33,7 @@ class Disk(CloudBase):
             raise EmptyResultSet("no disks found")
         return disk_list
 
-    def create(self, name: str, zone: str, size: str, disk_type: str = "pd-ssd") -> str:
-        target_link = None
+    def create(self, name: str, zone: str, size: str, disk_type: str = "pd-ssd") -> str | None:
         disk_body = {
             "sizeGb": str(round(float(size))),
             "name": name,
@@ -44,18 +43,16 @@ class Disk(CloudBase):
             operation = self.disk_client.insert(
                 project=self.gcp_project,
                 zone=zone,
-                disk_resource=Disk.from_json(json.dumps(disk_body)),
+                disk_resource=GCPDisk.from_json(json.dumps(disk_body)),
             )
             result = self.wait_for_zone_operation(operation.name, zone)
-            target_link = result.get('targetLink')
+            return str(result.get('targetLink') or None)
         except gcp_exceptions.AlreadyExists:
             pass
         except gcp_exceptions.GoogleAPICallError as err:
             raise GCPDriverError(f"can not create disk: {err}")
         except Exception as err:
             raise GCPDriverError(f"error creating disk: {err}")
-
-        return target_link
 
     def delete(self, disk: str, zone: str) -> None:
         try:

@@ -7,8 +7,11 @@ import logging
 import json
 import base64
 import sqlite3
+import time
 import google.auth
 import google.auth.transport.requests
+
+from google.protobuf.json_format import MessageToDict
 from pathlib import Path
 from google.cloud import compute_v1
 from google.cloud import storage
@@ -16,15 +19,12 @@ from google.cloud import dns
 from google.oauth2 import service_account
 from google.cloud import resourcemanager_v3
 from google.oauth2.credentials import Credentials
+from google.cloud.compute_v1.types import Operation
 
 from couchformation.gcp.driver.constants import get_auth_directory, get_default_credentials
-from couchformation.gcp.driver.operations import (
-    GCPDriverError,
-    GCPDriverTransientError,
-    GCPOperations,
-)
 from couchformation.models.cloud_auth import CloudLoginParameters, GCPCredentials
 from couchformation.models.public_cloud import PublicCloud
+from couchformation.exception import FatalError, NonFatalError
 from couchformation.retry import retry
 
 logger = logging.getLogger('couchformation.gcp.driver.base')
@@ -32,7 +32,42 @@ logger.addHandler(logging.NullHandler())
 logging.getLogger("google").setLevel(logging.ERROR)
 
 
-class CloudBase(GCPOperations, PublicCloud):
+def resource_to_dict(message) -> dict:
+    if message is None:
+        return {}
+    if isinstance(message, dict):
+        return message
+    if hasattr(message, "_pb"):
+        return MessageToDict(message._pb)
+    return message
+
+
+class GCPDriverError(FatalError):
+    pass
+
+
+class GCPDriverTransientError(NonFatalError):
+    pass
+
+
+class EmptyResultSet(NonFatalError):
+    pass
+
+
+class CloudBase(PublicCloud):
+    _credentials: Credentials
+    instance_client: compute_v1.InstancesClient
+    disk_client: compute_v1.DisksClient
+    dns_client: dns.Client
+    image_client: compute_v1.ImagesClient
+    machine_type_client: compute_v1.MachineTypesClient
+    subnetwork_client: compute_v1.SubnetworksClient
+    network_client: compute_v1.NetworksClient
+    firewall_client: compute_v1.FirewallsClient
+    zones_client: compute_v1.ZonesClient
+    global_operations_client: compute_v1.GlobalOperationsClient
+    region_operations_client: compute_v1.RegionOperationsClient
+    zone_operations_client: compute_v1.ZoneOperationsClient
 
     def __init__(self, parameters: dict | CloudLoginParameters | None = None):
         self.parameters: dict = {}
@@ -43,19 +78,6 @@ class CloudBase(GCPOperations, PublicCloud):
         self._user_account_email = None
         self.gcp_zone_list = []
         self.gcp_zone = None
-        self.credentials: Credentials | None = None
-        self.instance_client = None
-        self.disk_client = None
-        self.dns_client = None
-        self.image_client = None
-        self.machine_type_client = None
-        self.subnetwork_client = None
-        self.network_client = None
-        self.firewall_client = None
-        self.zones_client = None
-        self.global_operations_client = None
-        self.region_operations_client = None
-        self.zone_operations_client = None
 
         socket.setdefaulttimeout(120)
 
@@ -83,7 +105,7 @@ class CloudBase(GCPOperations, PublicCloud):
             self.region_operations_client = compute_v1.RegionOperationsClient()
             self.zone_operations_client = compute_v1.ZoneOperationsClient()
             self.dns_client = dns.Client()
-            self.credentials, self.gcp_project = google.auth.default()
+            self._credentials, self.gcp_project = google.auth.default()
         except Exception as e:
             raise GCPDriverError(f"Failed to initialize GCP client: {e}")
 
@@ -111,7 +133,7 @@ class CloudBase(GCPOperations, PublicCloud):
         try:
             storage_client = storage.Client(
                 project=self.gcp_project,
-                credentials=self.credentials,
+                credentials=self._credentials,
             )
             storage_client.list_buckets()
         except Exception as err:
@@ -127,17 +149,17 @@ class CloudBase(GCPOperations, PublicCloud):
 
     def get_account_email(self):
         try:
-            if hasattr(self.credentials, "service_account_email"):
-                service_account_email = self.credentials.service_account_email
+            if hasattr(self._credentials, "service_account_email"):
+                service_account_email = self._credentials.service_account_email
                 account_email = None
-            elif hasattr(self.credentials, "signer_email"):
-                service_account_email = self.credentials.signer_email
+            elif hasattr(self._credentials, "signer_email"):
+                service_account_email = self._credentials.signer_email
                 account_email = None
             else:
                 service_account_email = None
                 request = google.auth.transport.requests.Request()
-                self.credentials.refresh(request=request)
-                token_payload = self.credentials.id_token.split('.')[1]
+                self._credentials.refresh(request=request)
+                token_payload = self._credentials.token.split('.')[1]
                 input_bytes = token_payload.encode('utf-8')
                 rem = len(input_bytes) % 4
                 if rem > 0:
@@ -233,6 +255,44 @@ class CloudBase(GCPOperations, PublicCloud):
 
         self.gcp_zone = self.gcp_zone_list[0]
         return self.gcp_zone_list
+
+    def wait_for_global_operation(self, operation: str) -> dict:
+        while True:
+            result = self.global_operations_client.get(
+                project=self.gcp_project,
+                operation=operation,
+            )
+            if result.status == Operation.Status.DONE:
+                if result.error:
+                    raise GCPDriverError(resource_to_dict(result.error))
+                return resource_to_dict(result)
+            time.sleep(1)
+
+    def wait_for_regional_operation(self, operation: str) -> dict:
+        while True:
+            result = self.region_operations_client.get(
+                project=self.gcp_project,
+                region=self.gcp_region,
+                operation=operation,
+            )
+            if result.status == Operation.Status.DONE:
+                if result.error:
+                    raise GCPDriverError(resource_to_dict(result.error))
+                return resource_to_dict(result)
+            time.sleep(1)
+
+    def wait_for_zone_operation(self, operation: str, zone: str) -> dict:
+        while True:
+            result = self.zone_operations_client.get(
+                project=self.gcp_project,
+                zone=zone,
+                operation=operation,
+            )
+            if result.status == Operation.Status.DONE:
+                if result.error:
+                    raise GCPDriverError(resource_to_dict(result.error))
+                return resource_to_dict(result)
+            time.sleep(1)
 
     def get_region(self) -> str | None:
         return self.gcp_region

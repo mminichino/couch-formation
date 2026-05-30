@@ -40,9 +40,8 @@ class BasicAuth(AuthBase):
         return r
 
 
-@pytest.mark.cf_aws
-@pytest.mark.cf_posix
-@pytest.mark.order(11)
+@pytest.mark.cf_aws_linux
+@pytest.mark.order(1)
 class TestInstallAWS(object):
     container_id = None
     environment = {}
@@ -55,7 +54,7 @@ class TestInstallAWS(object):
         cls.environment = CloudBase(aws_base).get_auth_config()
         cls.container_id = start_container('cftest', cls.container_name, platform=platform)
         copy_home_env_to_container(cls.container_id, '/home/ubuntu', uid=1000, gid=1000)
-        command = ['pip3', 'install', '--user', 'git+https://github.com/mminichino/couch-formation-core']
+        command = ['pip3', 'install', '--user', 'git+https://github.com/mminichino/couch-formation']
         result = run_in_container(cls.container_id, command)
         assert result is True
         time.sleep(1)

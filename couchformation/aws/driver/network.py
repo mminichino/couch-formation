@@ -35,7 +35,9 @@ class Network(CloudBase):
 
         for vpc_entry in vpcs:
             if name:
-                vpc_name = self.get_tag("Name", vpc_entry['Tags'])
+                vpc_name = self.get_tag("Name", vpc_entry.get('Tags', []))
+                if not vpc_name:
+                    vpc_name = vpc_entry['VpcId']
                 if vpc_name != name:
                     continue
             vpc_block = {'cidr': vpc_entry['CidrBlock'],

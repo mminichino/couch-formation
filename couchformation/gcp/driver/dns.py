@@ -3,6 +3,7 @@
 
 import logging
 
+from typing import Any
 from google.api_core import exceptions as gcp_exceptions
 from google.cloud import dns
 from google.cloud.dns.zone import ManagedZone
@@ -35,12 +36,12 @@ class DNS(CloudBase):
 
     def create(self,
                domain: str,
-               network_link: str = None,
+               network_link: str | None = None,
                private: bool = False,
-               peer_project: str = None,
-               peer_network: str = None,
-               service_account: str = None,
-               zone_name: str = None):
+               peer_project: str | None = None,
+               peer_network: str | None = None,
+               service_account: str | None = None,
+               zone_name: str | None = None):
         client = self._dns_client(service_account)
 
         if zone_name:
@@ -51,7 +52,7 @@ class DNS(CloudBase):
 
         visibility = 'private' if private else 'public'
 
-        dns_body = {
+        dns_body: dict[str, Any] = {
             'name': name,
             'dnsName': self.fqdn(domain),
             'description': 'Couch Formation Managed Zone',
@@ -88,7 +89,7 @@ class DNS(CloudBase):
 
     def details(self, name: str):
         try:
-            zone = self.dns_client.zone(name)
+            zone: ManagedZone = self.dns_client.zone(name)
             if not zone.exists():
                 return None
             zone.reload()
@@ -96,7 +97,7 @@ class DNS(CloudBase):
                 'name': zone.name,
                 'dnsName': zone.dns_name,
                 'description': zone.description,
-                'visibility': zone.visibility,
+                'visibility': zone._properties.get("visibility"),
             }
         except gcp_exceptions.NotFound:
             return None
@@ -113,7 +114,7 @@ class DNS(CloudBase):
                     'name': zone.name,
                     'dnsName': zone.dns_name,
                     'description': zone.description,
-                    'visibility': zone.visibility,
+                    'visibility': zone._properties.get("visibility"),
                 })
             return zone_list
         except Exception as err:
@@ -135,9 +136,19 @@ class DNS(CloudBase):
         except Exception as err:
             raise GCPDriverError(f"error listing managed zones: {err}")
 
-    def delete(self, name: str):
+    def delete(self, name: str, recursive: bool = False):
         try:
             zone = self.dns_client.zone(name)
+            if recursive:
+                changes = zone.changes()
+                has_changes = False
+                for resource_record_set in zone.list_resource_record_sets():
+                    if resource_record_set.record_type in ('NS', 'SOA'):
+                        continue
+                    changes.delete_record_set(resource_record_set)
+                    has_changes = True
+                if has_changes:
+                    changes.create()
             zone.delete()
         except gcp_exceptions.NotFound:
             pass

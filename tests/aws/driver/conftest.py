@@ -1,24 +1,18 @@
-"""Common fixtures for couchformation.aws.driver unit tests.
-
-Provides:
-- A neutralized ``FatalError`` so ``AWSDriverError`` instances can be raised
-  and inspected without triggering ``sys.exit`` or crash-log side effects.
-- Mocked ``boto3.Session`` / ``boto3.client`` so driver classes can be
-  instantiated and exercised without any real AWS credentials or calls.
-"""
-
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from collections.abc import Callable
 
 import pytest
+
+from couchformation.network import NetworkDriver
+from couchformation.resources.config_manager import ConfigurationManager
+from couchformation.identity.id import UniqueId
+
+UUID: UniqueId = UniqueId()
 
 
 @pytest.fixture(autouse=True)
 def _neutralize_fatal_error(monkeypatch):
-    """Replace ``FatalError.__init__`` so AWSDriverError behaves like a plain
-    exception (no log writes, no ``sys.exit``).
-    """
     import couchformation.exception as exc_mod
 
     def _init(self, message):
@@ -29,58 +23,56 @@ def _neutralize_fatal_error(monkeypatch):
     yield
 
 
-class _ClientRegistry:
-    """Holds mocked boto3 clients keyed by service name."""
-
-    def __init__(self):
-        self.clients: dict[str, MagicMock] = {}
-
-    def get(self, name: str) -> MagicMock:
-        if name not in self.clients:
-            self.clients[name] = MagicMock(name=f"{name}_client")
-        return self.clients[name]
-
-
-@pytest.fixture
-def aws_clients(monkeypatch):
-    """Mock boto3 session/client construction for the AWS driver modules.
-
-    Returns a ``_ClientRegistry`` whose ``get(name)`` yields the same mock
-    ``CloudBase`` will receive for that service.  Tests configure the mock
-    via ``aws_clients.get('ec2').<method>.return_value = ...`` before
-    instantiating the driver class.
-    """
-    registry = _ClientRegistry()
-
-    session = MagicMock(name="boto3_session")
-    session.region_name = "us-east-1"
-
-    def _session_client(name, *args, **kwargs):
-        return registry.get(name)
-
-    session.client.side_effect = _session_client
-
-    import couchformation.aws.driver.base as base_mod
-
-    monkeypatch.setattr(base_mod.boto3, "Session", lambda *a, **kw: session)
-    monkeypatch.setattr(base_mod.boto3, "client", _session_client)
-
-    registry.session = session
-    return registry
+@pytest.fixture(scope="module")
+def aws_parameters():
+    cm = ConfigurationManager()
+    params = {
+        "cloud": "aws",
+        "region": "us-east-2",
+        "project": "pytest-aws-unittest",
+    }
+    if cm.get("aws.tags"):
+        params["tags"] = cm.get("aws.tags")
+    if cm.get("ssh.key"):
+        params["ssh_key"] = cm.get("ssh.key")
+    return params
 
 
 @pytest.fixture
-def cloud_base(aws_clients):
-    """Return an initialized ``CloudBase`` with mocked clients."""
-    from couchformation.aws.driver.base import CloudBase
+def cleanup(request):
+    handlers: list[Callable[[], None]] = []
 
-    return CloudBase({})
+    def register(fn: Callable[[], None]) -> None:
+        handlers.append(fn)
+
+    def _run_cleanup() -> None:
+        for fn in reversed(handlers):
+            try:
+                fn()
+            except Exception:
+                pass
+
+    request.addfinalizer(_run_cleanup)
+    return register
 
 
-def make_client_error(code: str, operation: str = "DescribeStuff"):
-    """Build a ``botocore.exceptions.ClientError`` matching ``code``."""
-    from botocore.exceptions import ClientError
+@pytest.fixture
+def cidr_util(aws_parameters):
+    util = NetworkDriver()
+    from couchformation.aws.driver.network import Network
 
-    return ClientError(
-        {"Error": {"Code": code, "Message": code}}, operation
-    )
+    for net in Network(aws_parameters).cidr_list:
+        util.add_network(net)
+    return util
+
+
+def unique_name(prefix: str) -> str:
+    return f"{prefix}-{UUID.short}"
+
+
+def domain_name() -> str:
+    cm = ConfigurationManager()
+    if cm.get("aws.domain"):
+        return f"{UUID.min}.{cm.get('aws.domain')}"
+    else:
+        return f"{UUID.min}.example.com"

@@ -6,6 +6,7 @@ import logging
 import warnings
 import requests
 import base64
+import unittest
 import pytest
 import time
 from requests.auth import AuthBase
@@ -39,13 +40,14 @@ class BasicAuth(AuthBase):
         return r
 
 
-@pytest.mark.cf_docker
-@pytest.mark.cf_posix
-@pytest.mark.order(10)
-class TestMainDocker(object):
+@pytest.mark.cf_aws_cli
+@pytest.mark.order(1)
+class TestMainAWS(unittest.TestCase):
 
-    @classmethod
-    def teardown_class(cls):
+    def setUp(self):
+        pass
+
+    def tearDown(self):
         time.sleep(1)
         loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
         for logger in loggers:
@@ -54,35 +56,38 @@ class TestMainDocker(object):
                 logger.removeHandler(handler)
 
     def test_1(self):
-        args = ["create", "--build", "cbs", "--cloud", "docker", "--project", "pytest-docker", "--name", "test-cluster"]
+        args = ["create", "--build", "cbs", "--cloud", "aws", "--project", "pytest-aws", "--name", "test-cluster", "--auth_mode", "sso",
+                "--region", "us-east-2", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.create()
 
     def test_2(self):
-        args = ["create", "--build", "sgw", "--cloud", "docker", "--project", "pytest-docker", "--name", "test-gateway"]
+        args = ["add", "--build", "cbs", "--cloud", "aws", "--project", "pytest-aws", "--name", "test-cluster", "--auth_mode", "sso",
+                "--region", "us-east-2", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
-        project.create()
+        project.add()
 
     def test_3(self):
-        args = ["deploy", "--project", "pytest-docker"]
+        args = ["deploy", "--project", "pytest-aws"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.deploy()
 
     def test_4(self):
-        args = ["list", "--project", "pytest-docker"]
+        args = ["list", "--project", "pytest-aws"]
         username = "Administrator"
-        password = "password"
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         nodes = list(project.list(api=True))
         connect_ip = nodes[0].get('public_ip')
+        password = project.credential()
 
+        time.sleep(1)
         session = requests.Session()
-        retries = Retry(total=60,
-                        backoff_factor=0.1,
+        retries = Retry(total=10,
+                        backoff_factor=0.01,
                         status_forcelist=[500, 501, 503])
         session.mount('http://', HTTPAdapter(max_retries=retries))
         session.mount('https://', HTTPAdapter(max_retries=retries))
@@ -92,7 +97,7 @@ class TestMainDocker(object):
         assert response.status_code == 200
 
     def test_5(self):
-        args = ["destroy", "--project", "pytest-docker"]
+        args = ["destroy", "--project", "pytest-aws"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.destroy()

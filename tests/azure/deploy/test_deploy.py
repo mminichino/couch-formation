@@ -26,9 +26,6 @@ from couchformation.ssh import SSHUtil
 
 
 @pytest.mark.cf_azure
-@pytest.mark.cf_windows
-@pytest.mark.cf_posix
-@pytest.mark.order(3)
 class TestMainAzure(unittest.TestCase):
 
     def setUp(self):

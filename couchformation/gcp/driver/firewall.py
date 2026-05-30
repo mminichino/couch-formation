@@ -40,13 +40,13 @@ class Firewall(CloudBase):
                 firewall_list.append(entry)
         return firewall_list
 
-    def create_ingress(self, name: str, network: str, cidr: str, protocol: str = "tcp", ports: Union[List[str], None] = None, udp_ports: Union[List[str], None] = None) -> str:
+    def create_ingress(self, name: str, network: str, cidr: str, protocol: str = "tcp", ports: Union[List[str], None] = None, udp_ports: Union[List[str], None] = None) -> str | None:
         target_link = None
-        allowed = [compute_v1.Allowed(IP_protocol=protocol)]
+        allowed = [compute_v1.Allowed(I_p_protocol=protocol)]
         if ports:
             allowed[0].ports = list(ports)
         if udp_ports:
-            allowed.append(compute_v1.Allowed(IP_protocol="udp", ports=list(udp_ports)))
+            allowed.append(compute_v1.Allowed(I_p_protocol="udp", ports=list(udp_ports)))
         firewall_body = compute_v1.Firewall(
             name=name,
             network=f"global/networks/{network}",
@@ -60,7 +60,7 @@ class Firewall(CloudBase):
                 firewall_resource=firewall_body,
             )
             result = self.wait_for_global_operation(operation.name)
-            target_link = result.get('targetLink')
+            target_link = str(result.get('targetLink') or None)
         except gcp_exceptions.AlreadyExists:
             pass
         except gcp_exceptions.GoogleAPICallError as err:

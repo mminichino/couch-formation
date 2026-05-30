@@ -7,11 +7,10 @@ import time
 import datetime
 import copy
 import json
-from typing import Union
 
+from typing import Union, Any
 from google.api_core import exceptions as gcp_exceptions
-from google.cloud.compute_v1.types import Instance, Metadata
-
+from google.cloud.compute_v1.types import Instance as GCPInstance, Metadata
 from couchformation.gcp.driver.base import CloudBase, GCPDriverError, resource_to_dict
 from couchformation.ssh import SSHUtil
 
@@ -43,7 +42,7 @@ class Instance(CloudBase):
             machine_type="n2-standard-2",
             virtualization: bool = False):
         target_link = None
-        instance_body = {
+        instance_body: dict[str, Any] = {
             "name": name,
             "zone": zone,
             "networkInterfaces": [
@@ -110,7 +109,7 @@ class Instance(CloudBase):
             operation = self.instance_client.insert(
                 project=self.gcp_project,
                 zone=zone,
-                instance_resource=Instance.from_json(json.dumps(instance_body)),
+                instance_resource=GCPInstance.from_json(json.dumps(instance_body)),
             )
             result = self.wait_for_zone_operation(operation.name, zone)
             target_link = result.get('targetLink')
@@ -154,7 +153,10 @@ class Instance(CloudBase):
 
     def gen_password(self, user: str, instance: str, zone: str, sa_email: str, ssh_key: str):
         instance_ref = self.details(instance, zone)
-        old_metadata = instance_ref['metadata']
+        if instance_ref:
+            old_metadata = instance_ref['metadata']
+        else:
+            return None
 
         mod, exp = SSHUtil().get_mod_exp(ssh_key)
         modulus = base64.b64encode(mod)
@@ -208,3 +210,4 @@ class Instance(CloudBase):
                     return password.decode('utf-8')
             except ValueError:
                 pass
+        return None

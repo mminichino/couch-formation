@@ -2,8 +2,7 @@
 ##
 
 import logging
-
-from google.api_core import exceptions as gcp_exceptions
+from typing import Any
 
 from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet, resource_to_dict
 from couchformation.gcp.driver.constants import ComputeTypes
@@ -27,10 +26,14 @@ class MachineType(CloudBase):
             filter_string = None
 
         try:
+            request = {
+                "project": self.gcp_project,
+                "zone": zone,
+            }
+            if filter_string:
+                request["filter"] = filter_string
             for machine_type in self.machine_type_client.list(
-                project=self.gcp_project,
-                zone=zone,
-                filter=filter_string,
+                request=request,
             ):
                 machine_data = resource_to_dict(machine_type)
                 if not machine_data['name'].startswith(tuple(ComputeTypes().as_list())):
@@ -57,7 +60,7 @@ class MachineType(CloudBase):
         machine_list = sorted(machine_list, key=lambda m: m['name'])
 
         for machine_type in C.MACHINE_TYPES:
-            machine = next((m for m in machine_list if m['cpu'] == machine_type['cpu'] and m['memory'] == machine_type['memory']), None)
+            machine: dict[str, Any] | None = next((m for m in machine_list if m['cpu'] == machine_type['cpu'] and m['memory'] == machine_type['memory']), None)
             if not machine:
                 continue
             machine.update(dict(machine_type=machine_type['name']))

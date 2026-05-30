@@ -24,9 +24,6 @@ warnings.filterwarnings("ignore")
 
 
 @pytest.mark.cf_aws
-@pytest.mark.cf_windows
-@pytest.mark.cf_posix
-@pytest.mark.order(1)
 class TestMainAWS(unittest.TestCase):
 
     def setUp(self):

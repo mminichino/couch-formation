@@ -40,12 +40,9 @@ class BasicAuth(AuthBase):
         return r
 
 
-@pytest.mark.cf_gcp
-@pytest.mark.cf_windows
-@pytest.mark.cf_posix
-@pytest.mark.cf_basic
-@pytest.mark.order(5)
-class TestMainGCP(unittest.TestCase):
+@pytest.mark.cf_azure_cli
+@pytest.mark.order(1)
+class TestMainAzure(unittest.TestCase):
 
     def setUp(self):
         pass
@@ -59,27 +56,27 @@ class TestMainGCP(unittest.TestCase):
                 logger.removeHandler(handler)
 
     def test_1(self):
-        args = ["create", "--build", "cbs", "--cloud", "gcp", "--project", "pytest-gcp", "--name", "test-cluster",
-                "--region", "us-central1", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
+        args = ["create", "--build", "cbs", "--cloud", "azure", "--project", "pytest-azure", "--name", "test-cluster",
+                "--region", "eastus", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.create()
 
     def test_2(self):
-        args = ["add", "--build", "cbs", "--cloud", "gcp", "--project", "pytest-gcp", "--name", "test-cluster",
-                "--region", "us-central1", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
+        args = ["add", "--build", "cbs", "--cloud", "azure", "--project", "pytest-azure", "--name", "test-cluster",
+                "--region", "eastus", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.add()
 
     def test_3(self):
-        args = ["deploy", "--project", "pytest-gcp"]
+        args = ["deploy", "--project", "pytest-azure"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.deploy()
 
     def test_4(self):
-        args = ["list", "--project", "pytest-gcp"]
+        args = ["list", "--project", "pytest-azure"]
         username = "Administrator"
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
@@ -100,7 +97,7 @@ class TestMainGCP(unittest.TestCase):
         assert response.status_code == 200
 
     def test_5(self):
-        args = ["destroy", "--project", "pytest-gcp"]
+        args = ["destroy", "--project", "pytest-azure"]
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         project.destroy()

@@ -58,7 +58,7 @@ class Network(CloudBase):
         except EmptyResultSet:
             return iter(())
 
-    def create(self, name: str) -> str:
+    def create(self, name: str) -> str | None:
         target_link = None
         try:
             operation = self.network_client.insert(
@@ -66,7 +66,7 @@ class Network(CloudBase):
                 network_resource=compute_v1.Network(name=name, auto_create_subnetworks=False),
             )
             result = self.wait_for_global_operation(operation.name)
-            target_link = result.get('targetLink')
+            target_link = str(result.get('targetLink') or None)
             return target_link
         except gcp_exceptions.AlreadyExists:
             pass

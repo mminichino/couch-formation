@@ -4,6 +4,7 @@
 import os
 import unittest
 import tempfile
+import pytest
 import couchformation.kvdb as kvdb
 from couchformation.kvdb import KeyValueStore
 
@@ -18,6 +19,7 @@ def create_path(filename):
     return filename
 
 
+@pytest.mark.cf_db
 class TestMain(unittest.TestCase):
 
     def setUp(self):

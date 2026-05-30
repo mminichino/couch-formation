@@ -4,16 +4,16 @@ import os
 import sys
 import logging
 import warnings
-import requests
-import base64
 import unittest
 import pytest
 import time
-import re
+import requests
+import base64
+import dns.resolver
 from requests.auth import AuthBase
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
-from tests.common import cli_run
+
 
 warnings.filterwarnings("ignore")
 current = os.path.dirname(os.path.realpath(__file__))
@@ -42,16 +42,12 @@ class BasicAuth(AuthBase):
         return r
 
 
-@pytest.mark.cf_gcp
-@pytest.mark.cf_windows
-@pytest.mark.cf_posix
-@pytest.mark.cf_cli
-@pytest.mark.order(13)
-class TestMainGCP(unittest.TestCase):
-    command = None
+@pytest.mark.cf_capella_cli
+@pytest.mark.order(1)
+class TestMainCapella(unittest.TestCase):
 
     def setUp(self):
-        self.command = 'cloudmgr'
+        pass
 
     def tearDown(self):
         time.sleep(1)
@@ -62,36 +58,42 @@ class TestMainGCP(unittest.TestCase):
                 logger.removeHandler(handler)
 
     def test_1(self):
-        args = ["create", "--build", "cbs", "--cloud", "gcp", "--project", "pytest-gcp", "--name", "test-cluster",
-                "--region", "us-central1", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
-        result, output = cli_run(self.command, *args)
-        p = re.compile("Creating new service")
-        assert p.search(output) is not None
-        assert result == 0
+        args = ["create", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-cluster",
+                "--region", "us-east-2", "--quantity", "3", "--provider", "aws", "--machine_type", "4x16"]
+        cm = CloudMgrCLI(args)
+        project = Project(cm.options, cm.remainder)
+        project.create()
 
     def test_2(self):
-        args = ["add", "--build", "cbs", "--cloud", "gcp", "--project", "pytest-gcp", "--name", "test-cluster",
-                "--region", "us-central1", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
-        result, output = cli_run(self.command, *args)
-        p = re.compile("Adding node group to service")
-        assert p.search(output) is not None
-        assert result == 0
+        args = ["add", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-cluster", "--region", "us-east-2", "--quantity", "2",
+                "--provider", "aws", "--machine_type", "4x16", "--services", "analytics"]
+        cm = CloudMgrCLI(args)
+        project = Project(cm.options, cm.remainder)
+        project.add()
 
     def test_3(self):
-        args = ["deploy", "--project", "pytest-gcp"]
-        result, output = cli_run(self.command, *args)
-        p = re.compile("Cluster Initialized")
-        assert p.search(output) is not None
-        assert result == 0
+        args = ["create", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-app-svc",
+                "--quantity", "2", "--machine_type", "4x8", "--type", "mobile", "--connect", "test-cluster"]
+        cm = CloudMgrCLI(args)
+        project = Project(cm.options, cm.remainder)
+        project.create()
 
     def test_4(self):
-        args = ["list", "--project", "pytest-gcp"]
+        args = ["deploy", "--project", "pytest-project"]
+        cm = CloudMgrCLI(args)
+        project = Project(cm.options, cm.remainder)
+        project.deploy()
+
+    def test_5(self):
+        args = ["list", "--project", "pytest-project"]
         username = "Administrator"
         cm = CloudMgrCLI(args)
         project = Project(cm.options, cm.remainder)
         nodes = list(project.list(api=True))
-        connect_ip = nodes[0].get('public_ip')
+        connect_string = nodes[0].get('connect_string')
         password = project.credential()
+        srv_records = dns.resolver.resolve('_couchbases._tcp.' + connect_string, 'SRV')
+        connect_name = str(srv_records[0].target).rstrip('.')
 
         time.sleep(1)
         session = requests.Session()
@@ -101,13 +103,12 @@ class TestMainGCP(unittest.TestCase):
         session.mount('http://', HTTPAdapter(max_retries=retries))
         session.mount('https://', HTTPAdapter(max_retries=retries))
 
-        response = requests.get(f"http://{connect_ip}:8091/pools/default", verify=False, timeout=15, auth=BasicAuth(username, password))
+        response = requests.get(f"https://{connect_name}:18091/pools/default", verify=False, timeout=15, auth=BasicAuth(username, password))
 
         assert response.status_code == 200
 
-    def test_5(self):
-        args = ["destroy", "--project", "pytest-gcp"]
-        result, output = cli_run(self.command, *args)
-        p = re.compile("Removing")
-        assert p.search(output) is not None
-        assert result == 0
+    def test_6(self):
+        args = ["destroy", "--project", "pytest-project"]
+        cm = CloudMgrCLI(args)
+        project = Project(cm.options, cm.remainder)
+        project.destroy()

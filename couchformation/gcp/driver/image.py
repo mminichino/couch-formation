@@ -82,7 +82,7 @@ class Image(CloudBase):
         except Exception as err:
             raise GCPDriverError(f"error deleting image: {err}")
 
-    def list_standard(self, architecture: str = 'x86_64', os_id: str = None, os_version: str = None):
+    def list_standard(self, architecture: str = 'x86_64', os_id: str | None = None, os_version: str | None = None):
         result_list = []
         for image_type in GCPImageProjects.projects:
             if os_id and image_type['os_id'] != os_id:
@@ -110,6 +110,7 @@ class Image(CloudBase):
                 if len(result_list) > 0:
                     logger.debug(f"Selected image -> {result_list[-1]}")
                 return result_list[-1]
+        return result_list
 
     @staticmethod
     def image_user(os_id: str):

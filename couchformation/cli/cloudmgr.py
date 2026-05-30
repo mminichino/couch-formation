@@ -52,7 +52,7 @@ class CloudMgrCLI(CLI):
         command_subparser.add_parser('show', help="Project Information", parents=[opt_parser], add_help=False, aliases=['info'])
         command_subparser.add_parser('parameters', help="Show Project Parameters", parents=[opt_parser], add_help=False, aliases=['param', 'parm'])
         command_subparser.add_parser('dump', help="Create Debug Bundle", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('cli', help="Get Project Create CLI", parents=[opt_parser], add_help=False)
+        command_subparser.add_parser('integration', help="Get Project Create CLI", parents=[opt_parser], add_help=False)
         command_subparser.add_parser('update', help="Edit Service Settings", parents=[opt_parser], add_help=False)
         command_subparser.add_parser('peer', help="Network Peering", parents=[opt_parser], add_help=False)
         command_subparser.add_parser('login', help="Cloud Login", parents=[opt_parser], add_help=False)
@@ -159,7 +159,7 @@ class CloudMgrCLI(CLI):
                 print(json.dumps(results, indent=2))
         elif self.options.command == "param" or self.options.command == "parameters" or self.options.command == "parm":
             project.project_show()
-        elif self.options.command == "cli":
+        elif self.options.command == "integration":
             project.project_cli()
         elif self.options.command == "update":
             if self.options.name is None:

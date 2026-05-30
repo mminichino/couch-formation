@@ -48,7 +48,7 @@ class Subnet(CloudBase):
             raise EmptyResultSet("no subnets found")
         return subnet_list
 
-    def create(self, name: str, network: str, cidr: str) -> str:
+    def create(self, name: str, network: str, cidr: str) -> str | None:
         target_link = None
         network_result = self.network_client.get(project=self.gcp_project, network=network)
         network_info = resource_to_dict(network_result)
@@ -65,7 +65,7 @@ class Subnet(CloudBase):
                 subnetwork_resource=subnetwork_body,
             )
             result = self.wait_for_regional_operation(operation.name)
-            target_link = result.get('targetLink')
+            target_link = str(result.get('targetLink') or None)
         except gcp_exceptions.AlreadyExists:
             pass
         except gcp_exceptions.GoogleAPICallError as err:

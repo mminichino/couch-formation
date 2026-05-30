@@ -46,7 +46,6 @@ dependencies = [
     "pyvmomi>=8.0.0.1.1",
     "requests>=2.31.0",
     "urllib3>=1.26.16",
-    "azure-common>=1.1.28",
     "azure-core>=1.29.6",
     "azure-mgmt-resource>=23.1.1",
     "azure-identity>=1.12.0",

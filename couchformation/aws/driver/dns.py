@@ -32,7 +32,7 @@ class DNS(CloudBase):
             }
         try:
             result = self.dns_client.create_hosted_zone(Name=domain, **kwargs)
-            return result.get('HostedZone', {}).get('Id')
+            return result.get('HostedZone', {}).get('Id').rsplit("/", 1)[-1]
         except Exception as err:
             raise AWSDriverError(f"error creating hosted domain: {err}")
 
@@ -52,7 +52,7 @@ class DNS(CloudBase):
             result = self.dns_client.list_hosted_zones()
             r_set = next((item for item in result.get('HostedZones', [])
                           if item.get('Name').startswith(domain) and item.get('Config', {}).get('PrivateZone', False) is False), None)
-            return r_set.get('Id') if r_set else None
+            return r_set.get('Id').rsplit("/", 1)[-1] if r_set else None
         except botocore.exceptions.ClientError as err:
             if err.response['Error']['Code'] == 'NoSuchHostedZone':
                 return None
