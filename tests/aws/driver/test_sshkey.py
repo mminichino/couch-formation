@@ -6,7 +6,8 @@ from couchformation.aws.driver.sshkey import SSHKey
 from couchformation.ssh import SSHUtil
 from tests.aws.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_ssh_key_create_details_delete(aws_parameters, cleanup):

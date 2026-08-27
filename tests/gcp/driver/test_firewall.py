@@ -6,7 +6,8 @@ from couchformation.gcp.driver.firewall import Firewall
 from couchformation.gcp.driver.network import Network
 from tests.gcp.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_firewall_create_details_delete(gcp_parameters, cidr_util, cleanup):

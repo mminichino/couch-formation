@@ -57,13 +57,16 @@ class AzureNetwork(object):
         self.az_network = Network(self.parameters)
         self.az_base = ResourceGroup(self.parameters)
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
-        self.rg_name = f"{self.asset_prefix}-rg"
-        self.vpc_name = f"{self.asset_prefix}-vpc"
-        self.nsg_name = f"{self.asset_prefix}-nsg"
-        self.subnet_name = f"{self.asset_prefix}-subnet-01"
-        self.vnet_dns_link_name = f"{self.asset_prefix}-dns-link"
+        from couchformation.cloud_common import asset_names, resolve_project_uuid
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
+        self.rg_name = names["rg_name"]
+        self.vpc_name = names["vpc_name"]
+        self.nsg_name = names["nsg_name"]
+        self.subnet_name = names["subnet_name"]
+        self.vnet_dns_link_name = names["dns_link"]
 
     def check_state(self):
         if self.state.get('resource_group'):

@@ -11,7 +11,8 @@ from couchformation.azure.driver.resource_group import ResourceGroup
 from couchformation.ssh import SSHUtil
 from tests.azure.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_instance_run_terminate(azure_parameters, azure_rg, cidr_util, cleanup):

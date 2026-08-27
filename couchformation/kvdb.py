@@ -41,7 +41,7 @@ class KeyValueStore(UserDict):
 
     def _connect(self):
         try:
-            conn = sqlite3.connect(self.filename)
+            conn = sqlite3.connect(self.filename, check_same_thread=False)
             cursor = conn.cursor()
             return conn, cursor
         except Exception as err:

@@ -4,7 +4,8 @@ import pytest
 
 from couchformation.azure.driver.image import Image
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_list_standard_returns_ubuntu_image(azure_parameters):

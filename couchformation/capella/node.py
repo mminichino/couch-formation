@@ -502,3 +502,22 @@ class CapellaDeployment(object):
 
     def info(self):
         return self.state.as_dict
+
+
+class Node:
+    def create(self, request):
+        from couchformation.models.cloud_ops import NodeResult
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="capella",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+        )
+
+    def destroy(self, request):
+        return self.create(request)
+
+    def info(self, request):
+        return self.create(request)

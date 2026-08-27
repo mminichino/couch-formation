@@ -1,219 +1,347 @@
-##
-##
+from __future__ import annotations
 
-import re
+import json
 import logging
 import warnings
-import argparse
-import json
-from overrides import override
+from typing import Optional
+
+import typer
+
 import couchformation
-from couchformation.cli.cli import CLI
-from couchformation.project import Project
+from couchformation.models.project import (
+    GroupCreateRequest,
+    PeerConfigRequest,
+    ProjectCreateRequest,
+    ResourceCreateRequest,
+)
 from couchformation.resources.config_manager import ConfigurationManager
-from couchformation.support.debug import CreateDebugPackage
+from couchformation.services.config import ProjectConfigService
+from couchformation.services.deploy import ProjectDeployService
+from couchformation.services.importer import ProjectImportService
 from couchformation.ssh import SSHUtil
 
 warnings.filterwarnings("ignore")
-logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+logger = logging.getLogger("cloudmgr")
+
+app = typer.Typer(help="Couch Formation cloud manager", no_args_is_help=True)
+config_app = typer.Typer(help="Configuration manager")
+create_app = typer.Typer(help="Create resources")
+delete_app = typer.Typer(help="Delete resources")
+list_app = typer.Typer(help="List resources")
+project_app = typer.Typer(help="Project operations", invoke_without_command=False)
+project_create_app = typer.Typer(help="Create project resources")
+project_remove_app = typer.Typer(help="Remove project resources")
+project_set_app = typer.Typer(help="Update project resources")
+ssh_app = typer.Typer(help="SSH key manager")
+
+app.add_typer(config_app, name="config")
+app.add_typer(create_app, name="create")
+app.add_typer(delete_app, name="delete")
+app.add_typer(list_app, name="list")
+app.add_typer(project_app, name="project")
+app.add_typer(ssh_app, name="ssh")
+project_app.add_typer(project_create_app, name="create")
+project_app.add_typer(project_remove_app, name="remove")
+project_app.add_typer(project_set_app, name="set")
 
 
-class CloudMgrCLI(CLI):
+def _parse_variables(values: Optional[list[str]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in values or []:
+        if "=" not in item:
+            raise typer.BadParameter(f"Invalid variable '{item}', expected key=value")
+        key, value = item.split("=", 1)
+        result[key] = value
+    return result
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-    @override()
-    def local_args(self):
-        self.parser.add_argument('-V', action='store_true', dest='show_version', help="Display version information")
+@app.callback()
+def main_callback(
+    version: bool = typer.Option(False, "--version", "-V", help="Show version"),
+):
+    if version:
+        typer.echo(f"Couch Formation v{couchformation.__version__}")
+        raise typer.Exit()
 
-        opt_parser = argparse.ArgumentParser(parents=[self.parser], add_help=False)
-        opt_parser.add_argument('-b', '--build', action='store', help="Build Type", default="cbs")
-        opt_parser.add_argument('-c', '--cloud', action='store', help="Infrastructure", default="aws")
-        opt_parser.add_argument('-p', '--project', action='store', help="Project Name")
-        opt_parser.add_argument('-n', '--name', action='store', help="Service Name")
-        opt_parser.add_argument('-x', '--connect', action='store', help="Connection Name", default=None)
-        opt_parser.add_argument('-g', '--group', action='store', help="Group Number", default=1, type=int)
-        opt_parser.add_argument('-P', '--provisioner', action='store', help="Provisioner Name", default="remote")
-        opt_parser.add_argument('-R', '--raw', action='store_true', help="Skip provision phase")
-        opt_parser.add_argument('-t', '--to', action='store', help="Copy target")
-        opt_parser.add_argument('-E', '--extended', action='store_true', help="Extended output")
-        opt_parser.add_argument('--json', action='store_true', help="List output in JSON")
 
-        command_subparser = self.parser.add_subparsers(dest='command')
-        command_subparser.add_parser('create', help="Create New Service", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('add', help="Add Resource Group", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('copy', help="Copy Project", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('deploy', help="Deploy Project", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('destroy', help="Destroy Services", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('remove', help="Remove Services", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('clean', help="Clean Project", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('list', help="List Projects", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('show', help="Project Information", parents=[opt_parser], add_help=False, aliases=['info'])
-        command_subparser.add_parser('parameters', help="Show Project Parameters", parents=[opt_parser], add_help=False, aliases=['param', 'parm'])
-        command_subparser.add_parser('dump', help="Create Debug Bundle", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('integration', help="Get Project Create CLI", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('update', help="Edit Service Settings", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('peer', help="Network Peering", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('login', help="Cloud Login", parents=[opt_parser], add_help=False)
-        command_subparser.add_parser('help', help="Show Supported Options", parents=[opt_parser], add_help=False)
+@app.command("init")
+def init_cmd(
+    api_token: Optional[str] = typer.Option(None, "--api-token", help="API JWT secret/token"),
+):
+    """Initialize global configuration."""
+    cm = ConfigurationManager()
+    token = cm.ensure_api_token(api_token)
+    typer.echo(f"Initialized config at {cm.filename}")
+    typer.echo(f"API token ready ({token[:4]}...)")
 
-        config_cmd = command_subparser.add_parser('config', help="Configuration Manager", add_help=False)
-        config_parser = config_cmd.add_subparsers(dest='config_command')
-        config_parser.add_parser('get', help="Get Config Elements", add_help=False)
-        config_parser.add_parser('set', help="Get Config Elements", add_help=False)
-        config_parser.add_parser('unset', help="Get Config Elements", add_help=False)
 
-        ssh_opt_parser = argparse.ArgumentParser(add_help=False)
-        ssh_opt_parser.add_argument('-n', '--name', action='store', help="Key Name", default="cf-key-pair")
-        ssh_opt_parser.add_argument('-r', '--replace', action='store_true', help="Replace existing key")
+@config_app.command("get")
+def config_get(key: Optional[str] = typer.Argument(None)):
+    cm = ConfigurationManager()
+    if key is None:
+        for k, v in cm.list().items():
+            typer.echo(f"{k} = {v}")
+        return
+    value = cm.get(key)
+    if value is not None:
+        typer.echo(f"{key} = {value}")
 
-        ssh_cmd = command_subparser.add_parser('ssh', help="SSH Key Manager", add_help=False)
-        ssh_parser = ssh_cmd.add_subparsers(dest='ssh_command')
-        ssh_parser.add_parser('create', help="Create SSH Key Pair", parents=[ssh_opt_parser], add_help=False)
 
-    @staticmethod
-    def check_name(value) -> bool:
-        if not bool(re.match(r"^[a-z]([-a-z0-9]*[a-z0-9])?$", value)) or len(value) > 63:
-            return False
-        return True
+@config_app.command("set")
+def config_set(key: str, value: str):
+    ConfigurationManager().set(key, value)
+    typer.echo(f"Set {key}")
 
-    def run(self):
-        if not hasattr(self.options, 'json'):
-            logger.info(f"Couch Formation v{couchformation.__version__}")
 
-        if self.options.show_version:
-            return
+@config_app.command("unset")
+def config_unset(key: str):
+    ConfigurationManager().delete(key)
+    typer.echo(f"Unset {key}")
 
-        if self.options.command == "config":
-            self.config_mgr(self.options.config_command)
-            return
 
-        if self.options.command == "ssh":
-            self.ssh_mgr(self.options)
-            return
+@create_app.command("project")
+def create_project(
+    name: str = typer.Argument(...),
+    region: Optional[str] = typer.Option(None, "--region"),
+    cloud: Optional[str] = typer.Option("aws", "--cloud"),
+    password: Optional[str] = typer.Option(None, "--password"),
+):
+    project = ProjectConfigService().create_project(
+        ProjectCreateRequest(name=name, region=region, cloud=cloud, password=password)
+    )
+    typer.echo(f"Created project {project.name} ({project.uuid})")
 
-        if self.options.command == "dump":
-            CreateDebugPackage().create_snapshot()
-            return
 
-        if self.options.command == "list" and not self.options.project:
-            Project(self.options, self.remainder).list_projects()
-            return
+@delete_app.command("project")
+def delete_project(name: str = typer.Argument(...)):
+    ProjectConfigService().delete_project(name)
+    typer.echo(f"Deleted project {name}")
 
-        if self.options.command == "login" and self.options.cloud:
-            Project(self.options, self.remainder).login(self.options.cloud)
-            return
 
-        if self.options.command == "help":
-            logger.info("General parameters:\n")
-            self.parser.print_help()
-            print("")
-            Project(self.options, self.remainder).show_help()
-            return
+@list_app.command("projects")
+def list_projects():
+    for project in ProjectConfigService().list_projects():
+        typer.echo(f"{project.name}\t{project.uuid}\t{project.cloud or '-'}\t{project.region or '-'}")
 
-        if not self.options.command or not self.options.project:
-            logger.error("Missing required arguments")
-            self.parser.print_help()
-            return
 
-        project = Project(self.options, self.remainder)
+@list_app.command("resources")
+def list_resources(project_name: str = typer.Argument(...)):
+    svc = ProjectConfigService()
+    for group in svc.list_groups(project_name):
+        typer.echo(f"group\t{group.group}\t{group.name}\t{group.cloud}\tcount={group.count}")
+    for resource in svc.list_resources(project_name):
+        typer.echo(f"resource\t{resource.name}\t{resource.cloud}")
 
-        if self.options.command == "create":
-            if self.options.name is None:
-                logger.error("Missing required parameter: name")
-                return
-            if not self.check_name(self.options.name):
-                logger.error(f"Invalid service name (name should conform to RFC1035): {self.options.name}")
-                return
-            if not self.check_name(self.options.project):
-                logger.error(f"Invalid project name (name should conform to RFC1035): {self.options.project}")
-                return
-            project.create()
-        elif self.options.command == "add":
-            if self.options.name is None:
-                logger.error("Missing required parameter: name")
-                return
-            if not self.check_name(self.options.name):
-                logger.error(f"Invalid service name (name should conform to RFC1035): {self.options.name}")
-                return
-            if not self.check_name(self.options.project):
-                logger.error(f"Invalid project name (name should conform to RFC1035): {self.options.project}")
-                return
-            project.add()
-        elif self.options.command == "copy":
-            if self.options.to is None:
-                logger.error("Missing required parameter: to")
-            project.copy()
-        elif self.options.command == "deploy":
-            project.deploy(self.options.name, self.options.raw)
-        elif self.options.command == "destroy":
-            project.destroy(self.options.name)
-        elif self.options.command == "remove":
-            project.remove()
-        elif self.options.command == "clean":
-            project.clean()
-        elif self.options.command == "show" or self.options.command == "list" or self.options.command == "info":
-            results = project.list(api=self.options.json)
-            if self.options.json:
-                print(json.dumps(results, indent=2))
-        elif self.options.command == "param" or self.options.command == "parameters" or self.options.command == "parm":
-            project.project_show()
-        elif self.options.command == "integration":
-            project.project_cli()
-        elif self.options.command == "update":
-            if self.options.name is None:
-                logger.error("Missing required parameter: name")
-                return
-            project.service_edit()
-        elif self.options.command == "peer":
-            project.accept_peering(self.options.name)
-        elif self.options.command == "login":
-            project.login()
 
-        loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
-        for log in loggers:
-            handlers = getattr(log, 'handlers', [])
-            for handler in handlers:
-                handler.flush()
+@project_app.callback()
+def project_callback(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Project name or UUID"),
+):
+    ctx.ensure_object(dict)
+    ctx.obj["project"] = name
 
-    def config_mgr(self, command: str):
-        cm = ConfigurationManager()
-        if command == "get":
-            if len(self.remainder) == 0:
-                contents = cm.list()
-                for key in contents:
-                    print(f"{key} = {contents[key]}")
-                return
-            elif len(self.remainder) == 1:
-                value = cm.get(self.remainder[0])
-                if value is not None:
-                    print(f"{self.remainder[0]} = {value}")
-            else:
-                logger.error(f"Usage: get [key_name]")
-        elif command == "set":
-            if len(self.remainder) == 2:
-                cm.set(self.remainder[0], self.remainder[1])
-            else:
-                logger.error(f"Usage: set key_name value")
-        elif command == "unset":
-            if len(self.remainder) == 1:
-                cm.delete(self.remainder[0])
-            else:
-                logger.error(f"Usage: unset key_name")
-        else:
-            logger.error(f"Unknown config command: {command}")
 
-    @staticmethod
-    def ssh_mgr(options: argparse.Namespace):
-        cm = ConfigurationManager()
-        if options.ssh_command == "create":
-            _, private_file = SSHUtil.create_key_pair(options.name, options.replace)
-            cm.set('ssh.key', private_file)
-        else:
-            logger.error(f"Unknown ssh command")
+@project_create_app.command("group")
+def project_create_group(
+    ctx: typer.Context,
+    name: Optional[str] = typer.Option(None, "--name"),
+    cloud: str = typer.Option("aws", "--cloud"),
+    region: Optional[str] = typer.Option(None, "--region"),
+    count: int = typer.Option(1, "--count"),
+    availability_zone: Optional[str] = typer.Option(None, "--availability-zone"),
+    profile: Optional[str] = typer.Option(None, "--profile"),
+    build: str = typer.Option("cbs", "--build"),
+    os_id: str = typer.Option("ubuntu", "--os-id"),
+    os_version: str = typer.Option("24.04", "--os-version"),
+    machine_type: Optional[str] = typer.Option("4x16", "--machine-type"),
+    services: Optional[str] = typer.Option("default", "--services"),
+    finalizer: Optional[str] = typer.Option(None, "--finalizer"),
+    variable: Optional[list[str]] = typer.Option(None, "--variable", help="key=value (repeatable)"),
+):
+    project = ctx.obj["project"]
+    group = ProjectConfigService().create_group(
+        project,
+        GroupCreateRequest(
+            name=name,
+            cloud=cloud,
+            region=region,
+            count=count,
+            availability_zone=availability_zone,
+            profile=profile,
+            build=build,
+            os_id=os_id,
+            os_version=os_version,
+            machine_type=machine_type,
+            services=services,
+            finalizer=finalizer,
+            variables=_parse_variables(variable),
+        ),
+    )
+    typer.echo(f"Created group {group.group} ({group.name})")
+
+
+@project_create_app.command("resource")
+def project_create_resource(
+    ctx: typer.Context,
+    name: str = typer.Option(..., "--name"),
+    cloud: str = typer.Option("capella", "--cloud"),
+    region: Optional[str] = typer.Option(None, "--region"),
+    provider: Optional[str] = typer.Option("aws", "--provider"),
+    quantity: int = typer.Option(1, "--quantity"),
+    machine_type: Optional[str] = typer.Option(None, "--machine-type"),
+):
+    project = ctx.obj["project"]
+    resource = ProjectConfigService().create_resource(
+        project,
+        ResourceCreateRequest(
+            name=name,
+            cloud=cloud,
+            region=region,
+            provider=provider,
+            quantity=quantity,
+            machine_type=machine_type,
+        ),
+    )
+    typer.echo(f"Created resource {resource.name}")
+
+
+@project_remove_app.command("group")
+def project_remove_group(
+    ctx: typer.Context,
+    group_number: int = typer.Argument(...),
+):
+    ProjectConfigService().remove_group(ctx.obj["project"], group_number)
+    typer.echo(f"Removed group {group_number}")
+
+
+@project_remove_app.command("resource")
+def project_remove_resource(
+    ctx: typer.Context,
+    resource_name: str = typer.Argument(...),
+):
+    ProjectConfigService().remove_resource(ctx.obj["project"], resource_name)
+    typer.echo(f"Removed resource {resource_name}")
+
+
+@project_set_app.command("group")
+def project_set_group(
+    ctx: typer.Context,
+    group_number: int = typer.Argument(...),
+    count: Optional[int] = typer.Option(None, "--count"),
+    machine_type: Optional[str] = typer.Option(None, "--machine-type"),
+    finalizer: Optional[str] = typer.Option(None, "--finalizer"),
+    variable: Optional[list[str]] = typer.Option(None, "--variable"),
+):
+    updates = {
+        "count": count,
+        "machine_type": machine_type,
+        "finalizer": finalizer,
+    }
+    vars_map = _parse_variables(variable)
+    if vars_map:
+        updates["variables"] = vars_map
+    group = ProjectConfigService().set_group(ctx.obj["project"], group_number, updates)
+    typer.echo(f"Updated group {group.group}")
+
+
+@project_set_app.command("resource")
+def project_set_resource(
+    ctx: typer.Context,
+    resource_name: str = typer.Argument(...),
+    quantity: Optional[int] = typer.Option(None, "--quantity"),
+    machine_type: Optional[str] = typer.Option(None, "--machine-type"),
+    region: Optional[str] = typer.Option(None, "--region"),
+):
+    resource = ProjectConfigService().set_resource(
+        ctx.obj["project"],
+        resource_name,
+        {"quantity": quantity, "machine_type": machine_type, "region": region},
+    )
+    typer.echo(f"Updated resource {resource.name}")
+
+
+@project_app.command("deploy")
+def project_deploy(ctx: typer.Context):
+    result = ProjectDeployService().deploy(ctx.obj["project"])
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@project_app.command("destroy")
+def project_destroy(ctx: typer.Context):
+    result = ProjectDeployService().destroy(ctx.obj["project"])
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@project_app.command("status")
+def project_status(ctx: typer.Context):
+    result = ProjectDeployService().status(ctx.obj["project"])
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@project_app.command("import")
+def project_import(ctx: typer.Context):
+    result = ProjectImportService().import_project(ctx.obj["project"])
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@project_app.command("peer")
+def project_peer(
+    ctx: typer.Context,
+    provider_id: Optional[str] = typer.Option(None, "--provider-id"),
+    hosted_zone: Optional[str] = typer.Option(None, "--hosted-zone"),
+    peer_project: Optional[str] = typer.Option(None, "--peer-project"),
+    peer_region: Optional[str] = typer.Option(None, "--peer-region"),
+    cloud: Optional[str] = typer.Option(None, "--cloud"),
+    region: Optional[str] = typer.Option(None, "--region"),
+):
+    result = ProjectDeployService().peer(
+        ctx.obj["project"],
+        PeerConfigRequest(
+            provider_id=provider_id,
+            hosted_zone=hosted_zone,
+            peer_project=peer_project,
+            peer_region=peer_region,
+            cloud=cloud,
+            region=region,
+        ),
+    )
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@app.command("start")
+def start_server(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+):
+    """Start the REST API server."""
+    import uvicorn
+    from couchformation.api.app import create_app
+
+    ConfigurationManager().ensure_api_token()
+    uvicorn.run(create_app(), host=host, port=port)
+
+
+@app.command("stop")
+def stop_server():
+    """Stop is handled by terminating the start server process."""
+    typer.echo("Stop the server process (Ctrl+C) or kill the uvicorn PID.")
+
+
+@ssh_app.command("create")
+def ssh_create(
+    name: str = typer.Option("cf-key-pair", "--name", "-n"),
+    replace: bool = typer.Option(False, "--replace", "-r"),
+):
+    _, private_file = SSHUtil.create_key_pair(name, replace)
+    ConfigurationManager().set("ssh.key", private_file)
+    typer.echo(f"Created SSH key {private_file}")
 
 
 def main(args=None):
-    cli = CloudMgrCLI(args)
-    cli.run()
+    app(args=args)
+
+
+if __name__ == "__main__":
+    main()

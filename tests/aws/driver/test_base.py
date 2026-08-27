@@ -5,7 +5,8 @@ import pytest
 from couchformation.aws.driver.base import AWSDriverError, CloudBase, EmptyResultSet
 from couchformation.aws.driver.regions import Regions
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_init_default_profile(aws_parameters):

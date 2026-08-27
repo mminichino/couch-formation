@@ -5,7 +5,8 @@ import pytest
 from couchformation.azure.driver.dns import DNS
 from tests.azure.driver.conftest import domain_name
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_dns_zone_lifecycle(azure_parameters, azure_rg, cleanup):

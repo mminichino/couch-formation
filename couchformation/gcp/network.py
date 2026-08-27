@@ -62,13 +62,16 @@ class GCPNetwork(object):
         self.gcp_network = Network(self.parameters)
         self.gcp_base = CloudBase(self.parameters)
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
-        self.vpc_name = f"{self.asset_prefix}-vpc"
-        self.subnet_name = f"{self.asset_prefix}-subnet-01"
-        self.firewall_default = f"{self.vpc_name}-fw-default"
-        self.firewall_ssh = f"{self.vpc_name}-fw-ssh"
-        self.firewall_win = f"{self.vpc_name}-fw-win"
+        from couchformation.cloud_common import asset_names, resolve_project_uuid
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
+        self.vpc_name = names["vpc_name"]
+        self.subnet_name = names["subnet_name"]
+        self.firewall_default = names["fw_default"]
+        self.firewall_ssh = names["fw_ssh"]
+        self.firewall_win = names["fw_win"]
 
         if self.peer_network and self.peer_project:
             peer_name_part = uuid.uuid5(uuid.NAMESPACE_URL, self.peer_project + self.peer_network)

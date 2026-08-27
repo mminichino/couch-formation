@@ -4,7 +4,8 @@ import pytest
 
 from couchformation.aws.driver.machine import MachineType
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_list_returns_instance_types(aws_parameters):

@@ -71,16 +71,19 @@ class AWSNetwork(object):
         if cm.get('ssh.key') and not self.ssh_key:
             self.ssh_key = cm.get('ssh.key')
 
-        self.tags = csv_dict_concat({"Project": self.project}, self.tags)
+        from couchformation.cloud_common import asset_names, merge_project_tags, resolve_project_uuid
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        self.tags = merge_project_tags(self.parameters, self.project_uuid, self.project)
         self.tags = csv_dict_concat({"Service": self.name}, self.tags)
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
-        self.vpc_name = f"{self.asset_prefix}-vpc"
-        self.ig_name = f"{self.asset_prefix}-gw"
-        self.rt_name = f"{self.asset_prefix}-rt"
-        self.sg_name = f"{self.asset_prefix}-sg"
-        self.key_name = f"{self.asset_prefix}-key"
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
+        self.vpc_name = names["vpc_name"]
+        self.ig_name = names["ig_name"]
+        self.rt_name = names["rt_name"]
+        self.sg_name = names["sg_name"]
+        self.key_name = names["key_name"]
 
     def check_state(self):
         for n, zone_state in reversed(list(enumerate(self.state.list_get('zone')))):

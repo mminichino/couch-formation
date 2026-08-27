@@ -6,7 +6,8 @@ from couchformation.azure.driver.disk import Disk
 from couchformation.azure.driver.resource_group import ResourceGroup
 from tests.azure.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_disk_create_details_delete(azure_parameters, azure_rg, cleanup):

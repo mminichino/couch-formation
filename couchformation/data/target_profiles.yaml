@@ -1,4 +1,3 @@
----
 aws:
   base:
     couchformation.aws.driver.base:
@@ -23,38 +22,38 @@ aws:
       info: info
       compose: null
   parameters:
-    - region
-    - zone
-    - auth_mode
-    - profile
-    - ssh_key
-    - cidr
-    - os_id
-    - os_version
-    - os_arch
-    - feature
-    - machine_type
-    - machine_name
-    - quantity
-    - services
-    - options
-    - volume_iops
-    - volume_size
-    - sw_version
-    - upload
-    - domain
-    - ports
-    - hosted_zone
-    - provider_id
-    - tags
-    - ephemeral
+  - region
+  - zone
+  - auth_mode
+  - profile
+  - ssh_key
+  - cidr
+  - os_id
+  - os_version
+  - os_arch
+  - feature
+  - machine_type
+  - machine_name
+  - quantity
+  - services
+  - options
+  - volume_iops
+  - volume_size
+  - sw_version
+  - upload
+  - domain
+  - ports
+  - hosted_zone
+  - provider_id
+  - tags
+  - ephemeral
   required:
-    - region
-    - os_id
-    - os_version
-    - quantity
+  - region
+  - os_id
+  - os_version
+  - quantity
   boolean:
-    - ephemeral
+  - ephemeral
 gcp:
   base:
     couchformation.gcp.driver.base:
@@ -79,33 +78,33 @@ gcp:
       info: info
       compose: null
   parameters:
-    - region
-    - zone
-    - auth_mode
-    - profile
-    - ssh_key
-    - cidr
-    - os_id
-    - os_version
-    - feature
-    - machine_type
-    - machine_name
-    - quantity
-    - services
-    - options
-    - volume_size
-    - sw_version
-    - upload
-    - domain
-    - ports
-    - peer_gcp_project
-    - peer_gcp_network
-    - managed_gcp_zone
+  - region
+  - zone
+  - auth_mode
+  - profile
+  - ssh_key
+  - cidr
+  - os_id
+  - os_version
+  - feature
+  - machine_type
+  - machine_name
+  - quantity
+  - services
+  - options
+  - volume_size
+  - sw_version
+  - upload
+  - domain
+  - ports
+  - peer_gcp_project
+  - peer_gcp_network
+  - managed_gcp_zone
   required:
-    - region
-    - os_id
-    - os_version
-    - quantity
+  - region
+  - os_id
+  - os_version
+  - quantity
   boolean: []
 azure:
   base:
@@ -131,35 +130,35 @@ azure:
       info: info
       compose: null
   parameters:
-    - region
-    - zone
-    - auth_mode
-    - profile
-    - ssh_key
-    - cidr
-    - os_id
-    - os_version
-    - feature
-    - machine_type
-    - machine_name
-    - quantity
-    - services
-    - options
-    - volume_iops
-    - volume_size
-    - volume_tier
-    - ultra
-    - sw_version
-    - upload
-    - domain
-    - ports
+  - region
+  - zone
+  - auth_mode
+  - profile
+  - ssh_key
+  - cidr
+  - os_id
+  - os_version
+  - feature
+  - machine_type
+  - machine_name
+  - quantity
+  - services
+  - options
+  - volume_iops
+  - volume_size
+  - volume_tier
+  - ultra
+  - sw_version
+  - upload
+  - domain
+  - ports
   required:
-    - region
-    - os_id
-    - os_version
-    - quantity
+  - region
+  - os_id
+  - os_version
+  - quantity
   boolean:
-    - ultra
+  - ultra
 capella:
   base:
     couchformation.capella.driver.base:
@@ -184,60 +183,24 @@ capella:
       info: info
       compose: compose
   parameters:
-    - profile
-    - provider
-    - region
-    - cidr
-    - machine_type
-    - quantity
-    - services
-    - options
-    - volume_size
-    - allow
-    - username
-    - password
-    - account_email
-    - type
-    - sw_version
-    - peer_project
-    - peer_region
+  - profile
+  - provider
+  - region
+  - cidr
+  - machine_type
+  - quantity
+  - services
+  - options
+  - volume_size
+  - allow
+  - username
+  - password
+  - account_email
+  - type
+  - sw_version
+  - peer_project
+  - peer_region
   required:
-    - machine_type
-    - quantity
-  boolean: []
-docker:
-  base:
-    couchformation.docker.driver.base:
-      module: CloudBase
-      test: test_session
-  network:
-    couchformation.docker.network:
-      module: DockerNetwork
-      deploy: create_vpc
-      destroy: destroy_vpc
-      peer: peer_vpc
-      unpeer: unpeer_vpc
-      info: info
-      compose: null
-  node:
-    couchformation.docker.node:
-      module: DockerDeployment
-      deploy: deploy
-      destroy: destroy
-      peer: null
-      unpeer: null
-      info: info
-      compose: null
-  parameters:
-    - cidr
-    - image
-    - quantity
-    - services
-    - options
-    - volume_size
-    - dir_mount
-    - ports
-    - username
-    - password
-  required: []
+  - machine_type
+  - quantity
   boolean: []

@@ -4,7 +4,8 @@ import pytest
 
 from couchformation.gcp.driver.base import CloudBase, GCPDriverError, EmptyResultSet
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_init_sets_project_and_region(gcp_parameters):

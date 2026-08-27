@@ -59,21 +59,20 @@ class AWSDeployment(object):
         self.ephemeral = parameters.get('ephemeral') if parameters.get('ephemeral') else False
         self.services = parameters.get('services') if parameters.get('services') else "default"
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
+        from couchformation.cloud_common import asset_names, merge_project_tags, resolve_project_uuid
+        from couchformation.naming import ResourceName
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
         self.node_name = f"{self.name}-node-{self.number:02d}"
-        node_code = UUIDGen().text_hash(self.node_name)
-        self.node_encoded = f"{self.asset_prefix}-{node_code}-node"
+        self.node_encoded = ResourceName.build("node", self.project_uuid, int(self.number))
 
         cm = ConfigurationManager()
-        if cm.get('aws.tags') and not self.tags:
-            self.tags = cm.get('aws.tags')
-        if os.environ.get('AWS_TAGS') and not self.tags:
-            self.tags = os.environ.get('AWS_TAGS')
         if cm.get('ssh.key') and not self.ssh_key:
             self.ssh_key = cm.get('ssh.key')
 
-        self.tags = csv_dict_concat({"Project": self.project}, self.tags)
+        self.tags = merge_project_tags(self.parameters, self.project_uuid, self.project)
         self.tags = csv_dict_concat({"Service": self.name}, self.tags)
 
         filename = get_state_file(self.project, self.name)
@@ -305,3 +304,90 @@ class AWSDeployment(object):
             return value
         else:
             raise AWSNodeError("names must only contain letters, numbers, dashes and underscores")
+
+
+class Node:
+    def create(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+        from couchformation.resources.config_manager import ConfigurationManager
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "aws"
+        cm = ConfigurationManager()
+        if not params.get("ssh_key"):
+            params["ssh_key"] = cm.get("ssh.key")
+        deployment = AWSDeployment(params)
+        state = deployment.deploy() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="aws",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            node_name=state.get("name") or f"{request.name}-node-{request.number:02d}",
+            instance_id=state.get("instance_id"),
+            instance_name=state.get("instance_name"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services") or request.services,
+            state=state,
+        )
+
+    def destroy(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+        from couchformation.resources.config_manager import ConfigurationManager
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "aws"
+        cm = ConfigurationManager()
+        if not params.get("ssh_key"):
+            params["ssh_key"] = cm.get("ssh.key")
+        deployment = AWSDeployment(params)
+        deployment.destroy()
+        state = state_to_dict(deployment.state)
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="aws",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            state=state,
+        )
+
+    def info(self, request):
+        from couchformation.cloud_common import resolve_project_uuid
+        from couchformation.models.cloud_ops import NodeResult
+        from couchformation.resources.config_manager import ConfigurationManager
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "aws"
+        cm = ConfigurationManager()
+        if not params.get("ssh_key"):
+            params["ssh_key"] = cm.get("ssh.key")
+        deployment = AWSDeployment(params)
+        state = deployment.info() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="aws",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            node_name=state.get("name"),
+            instance_id=state.get("instance_id"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services"),
+            state=state,
+        )

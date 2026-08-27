@@ -7,7 +7,8 @@ from couchformation.aws.driver.network import Network
 from couchformation.aws.driver.route import RouteTable
 from tests.aws.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_route_table_create_add_route_delete(aws_parameters, cidr_util, cleanup):

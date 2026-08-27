@@ -5,7 +5,8 @@ import pytest
 from couchformation.aws.driver.network import Network, Subnet
 from tests.aws.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_network_create_list_details_delete(aws_parameters, cidr_util, cleanup):

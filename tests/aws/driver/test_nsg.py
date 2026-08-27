@@ -6,7 +6,8 @@ from couchformation.aws.driver.network import Network
 from couchformation.aws.driver.nsg import SecurityGroup
 from tests.aws.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_security_group_create_ingress_delete(aws_parameters, cidr_util, cleanup):

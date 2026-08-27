@@ -89,8 +89,11 @@ def pytest_runtest_makereport():
             f.write(f"{rep.longreprtext}\n")
 
 
-def pytest_configure():
-    pass
+def pytest_configure(config):
+    config.addinivalue_line("markers", "driver: live AWS/GCP/Azure driver tests")
+    config.addinivalue_line("markers", "capella: Capella function tests")
+    config.addinivalue_line("markers", "integration: AWS/GCP/Azure main module integration tests")
+    config.addinivalue_line("markers", "regression: build/deploy/destroy node group regression tests")
 
 
 def pytest_sessionstart():

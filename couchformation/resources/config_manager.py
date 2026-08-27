@@ -3,6 +3,7 @@
 
 import logging
 import os
+import secrets
 import couchformation.constants as C
 import couchformation.kvdb as kvdb
 from couchformation.config import get_root_dir
@@ -23,6 +24,10 @@ PARAMETERS = {
         'type': 'string',
         'mutable': True
     },
+    'tags': {
+        'type': 'string',
+        'mutable': True
+    },
     'capella.token': {
         'type': 'string',
         'mutable': True
@@ -36,6 +41,10 @@ PARAMETERS = {
         'mutable': True
     },
     'capella.project': {
+        'type': 'string',
+        'mutable': True
+    },
+    'capella.project.id': {
         'type': 'string',
         'mutable': True
     },
@@ -54,18 +63,27 @@ PARAMETERS = {
     "azure.domain": {
         'type': 'string',
         'mutable': True
-    }
+    },
+    "api.token": {
+        'type': 'string',
+        'mutable': True
+    },
 }
 
 
 class ConfigurationManager(object):
 
     def __init__(self):
-        self.filename = C.CONFIG_FILE
+        self.filename = os.path.join(get_root_dir(), "cf.db")
+        legacy = os.path.join(get_root_dir(), "config.db")
 
         try:
             if not os.path.exists(get_root_dir()):
                 FileManager().make_dir(get_root_dir())
+            if not os.path.exists(self.filename) and os.path.exists(legacy):
+                self.filename = legacy
+            elif not os.path.exists(self.filename) and os.path.exists(C.LEGACY_CONFIG_FILE) and get_root_dir() == C.ROOT_DIRECTORY:
+                self.filename = C.LEGACY_CONFIG_FILE
         except Exception as err:
             raise ConfigError(f"can not create root dir: {err}")
 
@@ -161,3 +179,14 @@ class ConfigurationManager(object):
             if table.get(value_name):
                 response[key] = self.convert(key, table.get(value_name))
         return response
+
+    def ensure_api_token(self, token: str | None = None) -> str:
+        existing = self.get('api.token')
+        if token:
+            self.set('api.token', token)
+            return token
+        if existing:
+            return existing
+        generated = secrets.token_urlsafe(32)
+        self.set('api.token', generated)
+        return generated

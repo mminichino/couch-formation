@@ -20,6 +20,11 @@ from couchformation.resources.config_manager import ConfigurationManager
 from couchformation.ssh import SSHUtil
 from couchformation.util import parameter_to_dict
 
+
+pytestmark = [
+    pytest.mark.regression,
+    pytest.mark.cf_aws,
+]
 warnings.filterwarnings("ignore")
 
 

@@ -8,7 +8,8 @@ from couchformation.aws.driver.network import Network
 from tests.aws.driver.conftest import unique_name, domain_name
 
 logger = logging.getLogger('tests.aws.driver.test_dns')
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_public_hosted_zone_lifecycle(aws_parameters, cleanup):

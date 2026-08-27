@@ -6,6 +6,28 @@ from couchformation.models.cloud_auth import (
     CloudLoginParameters,
     GCPCredentials,
 )
+from couchformation.models.cloud_ops import (
+    AuthRequest,
+    AuthResult,
+    FoundationRequest,
+    FoundationResult,
+    NodeRequest,
+    NodeResult,
+    PeerRequest,
+    PeerResult,
+    ResourceRequest,
+    ResourceResult,
+    ZoneResult,
+)
+from couchformation.models.project import (
+    GroupCreateRequest,
+    NodeGroupConfig,
+    PeerConfigRequest,
+    ProjectConfig,
+    ProjectCreateRequest,
+    ResourceConfig,
+    ResourceCreateRequest,
+)
 from couchformation.models.public_cloud import PublicCloud
 
 __all__ = [
@@ -16,4 +38,22 @@ __all__ = [
     "CloudLoginParameters",
     "GCPCredentials",
     "PublicCloud",
+    "AuthRequest",
+    "AuthResult",
+    "FoundationRequest",
+    "FoundationResult",
+    "NodeRequest",
+    "NodeResult",
+    "PeerRequest",
+    "PeerResult",
+    "ResourceRequest",
+    "ResourceResult",
+    "ZoneResult",
+    "GroupCreateRequest",
+    "NodeGroupConfig",
+    "PeerConfigRequest",
+    "ProjectConfig",
+    "ProjectCreateRequest",
+    "ResourceConfig",
+    "ResourceCreateRequest",
 ]

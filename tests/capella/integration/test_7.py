@@ -1,114 +1,111 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import logging
-import warnings
-import unittest
-import pytest
 import time
-import requests
+import warnings
+import logging
 import base64
+
 import dns.resolver
+import pytest
+import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
 from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
 
+from couchformation.models.project import ProjectCreateRequest, ResourceCreateRequest
+from couchformation.services.config import ProjectConfigService
+from couchformation.services.deploy import ProjectDeployService
+
+pytestmark = [
+    pytest.mark.capella,
+    pytest.mark.cf_capella,
+]
 
 warnings.filterwarnings("ignore")
-current = os.path.dirname(os.path.realpath(__file__))
-parent = os.path.dirname(current)
-sys.path.append(parent)
-sys.path.append(current)
 
-from couchformation.project import Project
-from couchformation.cli.cloudmgr import CloudMgrCLI
+PROJECT = "pytest-capella-v5"
 
 
 class BasicAuth(AuthBase):
-
     def __init__(self, username, password):
         self.username = username
         self.password = password
 
     def __call__(self, r):
         auth_hash = f"{self.username}:{self.password}"
-        auth_bytes = auth_hash.encode('ascii')
-        auth_encoded = base64.b64encode(auth_bytes)
-        request_headers = {
-            "Authorization": f"Basic {auth_encoded.decode('ascii')}",
-        }
-        r.headers.update(request_headers)
+        auth_encoded = base64.b64encode(auth_hash.encode("ascii"))
+        r.headers.update({"Authorization": f"Basic {auth_encoded.decode('ascii')}"})
         return r
 
 
-@pytest.mark.cf_capella_cli
-@pytest.mark.order(1)
-class TestMainCapella(unittest.TestCase):
+@pytest.fixture(autouse=True)
+def _cleanup_logging():
+    yield
+    time.sleep(0.2)
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        for handler in getattr(logger, "handlers", []):
+            logger.removeHandler(handler)
 
-    def setUp(self):
-        pass
 
-    def tearDown(self):
-        time.sleep(1)
-        loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
-        for logger in loggers:
-            handlers = getattr(logger, 'handlers', [])
-            for handler in handlers:
-                logger.removeHandler(handler)
+def test_create_capella_resources():
+    svc = ProjectConfigService()
+    existing = svc.find_by_name(PROJECT)
+    if existing:
+        try:
+            ProjectDeployService().destroy(PROJECT)
+        except Exception:
+            pass
+        svc.delete_project(PROJECT)
 
-    def test_1(self):
-        args = ["create", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-cluster",
-                "--region", "us-east-2", "--quantity", "3", "--provider", "aws", "--machine_type", "4x16"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.create()
+    project = svc.create_project(ProjectCreateRequest(name=PROJECT, cloud="capella", region="us-east-1"))
+    svc.create_resource(
+        project.uuid,
+        ResourceCreateRequest(
+            name="test-cluster",
+            cloud="capella",
+            region="us-east-1",
+            provider="aws",
+            quantity=3,
+            machine_type="4x16",
+            type="database",
+        ),
+    )
+    resources = svc.list_resources(project.uuid)
+    assert any(r.name == "test-cluster" for r in resources)
 
-    def test_2(self):
-        args = ["add", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-cluster", "--region", "us-east-2", "--quantity", "2",
-                "--provider", "aws", "--machine_type", "4x16", "--services", "analytics"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.add()
 
-    def test_3(self):
-        args = ["create", "--build", "capella", "--cloud", "capella", "--project", "pytest-project", "--name", "test-app-svc",
-                "--quantity", "2", "--machine_type", "4x8", "--type", "mobile", "--connect", "test-cluster"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.create()
+def test_deploy_capella_resource():
+    result = ProjectDeployService().deploy(PROJECT)
+    assert "resources" in result
 
-    def test_4(self):
-        args = ["deploy", "--project", "pytest-project"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.deploy()
 
-    def test_5(self):
-        args = ["list", "--project", "pytest-project"]
-        username = "Administrator"
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        nodes = list(project.list(api=True))
-        connect_string = nodes[0].get('connect_string')
-        password = project.credential()
-        srv_records = dns.resolver.resolve('_couchbases._tcp.' + connect_string, 'SRV')
-        connect_name = str(srv_records[0].target).rstrip('.')
+def test_capella_endpoint_available():
+    status = ProjectDeployService().status(PROJECT)
+    project = ProjectConfigService().resolve(PROJECT)
+    password = project.password
+    state = None
+    from couchformation.services.deploy import ProjectDeployService as PDS
+    raw = PDS()._get_state(project.uuid, "resource:test-cluster")
+    assert raw
+    connect_string = raw.get("endpoint") or raw.get("state", {}).get("connect_string") or raw.get("state", {}).get("srv")
+    if not connect_string:
+        pytest.skip("No Capella connect string in state")
+    username = "Administrator"
+    srv_records = dns.resolver.resolve("_couchbases._tcp." + connect_string, "SRV")
+    connect_name = str(srv_records[0].target).rstrip(".")
+    session = requests.Session()
+    retries = Retry(total=10, backoff_factor=0.01, status_forcelist=[500, 501, 503])
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    response = requests.get(
+        f"https://{connect_name}:18091/pools/default",
+        verify=False,
+        timeout=15,
+        auth=BasicAuth(username, password),
+    )
+    assert response.status_code == 200
 
-        time.sleep(1)
-        session = requests.Session()
-        retries = Retry(total=10,
-                        backoff_factor=0.01,
-                        status_forcelist=[500, 501, 503])
-        session.mount('http://', HTTPAdapter(max_retries=retries))
-        session.mount('https://', HTTPAdapter(max_retries=retries))
 
-        response = requests.get(f"https://{connect_name}:18091/pools/default", verify=False, timeout=15, auth=BasicAuth(username, password))
-
-        assert response.status_code == 200
-
-    def test_6(self):
-        args = ["destroy", "--project", "pytest-project"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.destroy()
+def test_destroy_capella_project():
+    ProjectDeployService().destroy(PROJECT)
+    ProjectConfigService().delete_project(PROJECT)

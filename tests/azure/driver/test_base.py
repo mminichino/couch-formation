@@ -5,7 +5,8 @@ import pytest
 from couchformation.azure.driver.base import AzureDriverError, EmptyResultSet
 from couchformation.azure.driver.resource_group import ResourceGroup
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_init_sets_region_and_zones(azure_parameters):

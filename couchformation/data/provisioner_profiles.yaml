@@ -1,4 +1,3 @@
----
 remote:
   driver: couchformation.provisioner.remote
   module: RemoteProvisioner
@@ -7,49 +6,30 @@ remote:
   files: copy_file
   when: os_id != "windows"
   parameters:
-    - name
-    - service
-    - project
-    - public_ip
-    - private_ip
-    - username
-    - ssh_key
-    - zone
-    - services
-    - options
-    - connect
-    - private_ip_list
-    - public_ip_list
-    - service_list
-    - use_private_ip
-    - sw_version
-    - password
-    - host_password
-    - private_key
-    - upload
-    - public_hostname
-    - private_hostname
-    - private_host_list
-    - public_host_list
-docker:
-  driver: couchformation.provisioner.docker
-  module: ContainerExec
-  method: run
-  upload: upload
-  files: copy_file
-  when: cloud == "docker"
-  parameters:
-    - name
-    - service
-    - project
-    - public_ip
-    - private_ip
-    - services
-    - options
-    - private_ip_list
-    - use_private_ip
-    - copy
-    - upload
+  - name
+  - service
+  - project
+  - public_ip
+  - private_ip
+  - username
+  - ssh_key
+  - zone
+  - services
+  - options
+  - connect
+  - private_ip_list
+  - public_ip_list
+  - service_list
+  - use_private_ip
+  - sw_version
+  - password
+  - host_password
+  - private_key
+  - upload
+  - public_hostname
+  - private_hostname
+  - private_host_list
+  - public_host_list
 winrm:
   driver: couchformation.provisioner.winrm
   module: WinRMProvisioner
@@ -58,25 +38,25 @@ winrm:
   files: copy_file
   when: os_id == "windows"
   parameters:
-    - name
-    - service
-    - project
-    - username
-    - password
-    - public_ip
-    - private_ip
-    - services
-    - options
-    - connect
-    - private_ip_list
-    - public_ip_list
-    - service_list
-    - use_private_ip
-    - sw_version
-    - password
-    - host_password
-    - upload
-    - public_hostname
-    - private_hostname
-    - private_host_list
-    - public_host_list
+  - name
+  - service
+  - project
+  - username
+  - password
+  - public_ip
+  - private_ip
+  - services
+  - options
+  - connect
+  - private_ip_list
+  - public_ip_list
+  - service_list
+  - use_private_ip
+  - sw_version
+  - password
+  - host_password
+  - upload
+  - public_hostname
+  - private_hostname
+  - private_host_list
+  - public_host_list

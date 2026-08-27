@@ -5,7 +5,8 @@ import pytest
 from couchformation.gcp.driver.base import CloudBase
 from couchformation.gcp.driver.machine import MachineType
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_list_returns_machine_types(gcp_parameters):

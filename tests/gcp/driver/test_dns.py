@@ -5,7 +5,8 @@ import pytest
 from couchformation.gcp.driver.dns import DNS
 from tests.gcp.driver.conftest import unique_name, domain_name
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_managed_zone_lifecycle(gcp_parameters, cleanup):

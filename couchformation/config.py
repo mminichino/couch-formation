@@ -27,6 +27,8 @@ def get_log_dir():
 
 
 def get_root_dir():
+    if 'COUCH_FORMATION_ROOT_DIR' in os.environ:
+        return os.environ['COUCH_FORMATION_ROOT_DIR']
     return C.ROOT_DIRECTORY
 
 
@@ -36,6 +38,22 @@ def get_resource_dir(name: str, tag: str):
 
 def get_project_dir(name: str):
     return os.path.join(get_base_dir(), name)
+
+
+def get_project_uuid_dir(project_uuid: str):
+    return os.path.join(get_root_dir(), project_uuid)
+
+
+def get_project_config_db(project_uuid: str):
+    return os.path.join(get_project_uuid_dir(project_uuid), C.PROJECT_CONFIG)
+
+
+def get_project_resources_db(project_uuid: str):
+    return os.path.join(get_project_uuid_dir(project_uuid), C.PROJECT_RESOURCES)
+
+
+def get_project_state_db(project_uuid: str):
+    return os.path.join(get_project_uuid_dir(project_uuid), C.PROJECT_STATE)
 
 
 def get_state_file(project: str, name: str):

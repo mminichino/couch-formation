@@ -52,15 +52,18 @@ class GCPDeployment(object):
         self.volume_size = parameters.get('volume_size') if parameters.get('volume_size') else "256"
         self.services = parameters.get('services') if parameters.get('services') else "default"
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
+        from couchformation.cloud_common import asset_names, resolve_project_uuid
+        from couchformation.naming import ResourceName
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
         self.node_name = f"{self.name}-node-{self.number:02d}"
         self.swap_disk = f"{self.name}-swap-{self.number:02d}"
         self.data_disk = f"{self.name}-data-{self.number:02d}"
-        node_code = UUIDGen().text_hash(self.node_name)
-        self.node_encoded = f"{self.asset_prefix}-{node_code}-node"
-        self.swap_encoded = f"{self.asset_prefix}-{node_code}-swap"
-        self.data_encoded = f"{self.asset_prefix}-{node_code}-data"
+        self.node_encoded = ResourceName.build("node", self.project_uuid, int(self.number))
+        self.swap_encoded = ResourceName.build("swap", self.project_uuid, int(self.number))
+        self.data_encoded = ResourceName.build("data", self.project_uuid, int(self.number))
 
         cm = ConfigurationManager()
         if cm.get('ssh.key') and not self.ssh_key:
@@ -278,3 +281,75 @@ class GCPDeployment(object):
             return value
         else:
             raise GCPNodeError("names must only contain letters, numbers, dashes and underscores")
+
+
+class Node:
+    def create(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "gcp"
+        deployment = GCPDeployment(params)
+        state = deployment.deploy() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="gcp",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            node_name=state.get("name") or f"{request.name}-node-{request.number:02d}",
+            instance_id=state.get("instance_id") or state.get("name"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services") or request.services,
+            state=state,
+        )
+
+    def destroy(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "gcp"
+        deployment = GCPDeployment(params)
+        deployment.destroy()
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="gcp",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            state=state_to_dict(deployment.state),
+        )
+
+    def info(self, request):
+        from couchformation.cloud_common import resolve_project_uuid
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "gcp"
+        deployment = GCPDeployment(params)
+        state = deployment.info() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="gcp",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            instance_id=state.get("instance_id") or state.get("name"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services"),
+            state=state,
+        )

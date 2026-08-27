@@ -6,7 +6,8 @@ from couchformation.gcp.driver.network import Network
 from couchformation.gcp.driver.subnet import Subnet
 from tests.gcp.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_network_create_list_details_delete(gcp_parameters, cidr_util, cleanup):

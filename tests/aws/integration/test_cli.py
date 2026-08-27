@@ -1,103 +1,97 @@
 #!/usr/bin/env python3
 
 import os
-import sys
-import logging
-import warnings
-import requests
-import base64
-import unittest
-import pytest
 import time
-from requests.auth import AuthBase
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
+import warnings
+import logging
 
+import pytest
+
+from couchformation.models.project import GroupCreateRequest, ProjectCreateRequest
+from couchformation.services.config import ProjectConfigService
+from couchformation.services.deploy import ProjectDeployService
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.cf_aws,
+]
 warnings.filterwarnings("ignore")
-current = os.path.dirname(os.path.realpath(__file__))
-parent = os.path.dirname(current)
-sys.path.append(parent)
-sys.path.append(current)
 
-from couchformation.project import Project
-from couchformation.cli.cloudmgr import CloudMgrCLI
+PROJECT = "pytest-aws-v5"
 
 
-class BasicAuth(AuthBase):
-
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def __call__(self, r):
-        auth_hash = f"{self.username}:{self.password}"
-        auth_bytes = auth_hash.encode('ascii')
-        auth_encoded = base64.b64encode(auth_bytes)
-        request_headers = {
-            "Authorization": f"Basic {auth_encoded.decode('ascii')}",
-        }
-        r.headers.update(request_headers)
-        return r
+@pytest.fixture(scope="module")
+def project_name(tmp_path_factory, monkeypatch_module=None):
+    return PROJECT
 
 
-@pytest.mark.cf_aws_cli
-@pytest.mark.order(1)
-class TestMainAWS(unittest.TestCase):
+@pytest.fixture(autouse=True)
+def _cleanup_logging():
+    yield
+    time.sleep(0.2)
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        for handler in getattr(logger, "handlers", []):
+            logger.removeHandler(handler)
 
-    def setUp(self):
-        pass
 
-    def tearDown(self):
-        time.sleep(1)
-        loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
-        for logger in loggers:
-            handlers = getattr(logger, 'handlers', [])
-            for handler in handlers:
-                logger.removeHandler(handler)
+def test_create_project_and_groups():
+    svc = ProjectConfigService()
+    existing = svc.find_by_name(PROJECT)
+    if existing:
+        svc.delete_project(PROJECT)
+    project = svc.create_project(ProjectCreateRequest(name=PROJECT, cloud="aws", region="us-east-2"))
+    assert project.uuid
+    g0 = svc.create_group(
+        project.uuid,
+        GroupCreateRequest(
+            name="test-cluster",
+            cloud="aws",
+            region="us-east-2",
+            count=3,
+            os_id="ubuntu",
+            os_version="24.04",
+            machine_type="4x16",
+            build="cbs",
+            finalizer="couchbase",
+            variables={"version": "latest"},
+        ),
+    )
+    g1 = svc.create_group(
+        project.uuid,
+        GroupCreateRequest(
+            name="analytics",
+            cloud="aws",
+            region="us-east-2",
+            count=2,
+            os_id="ubuntu",
+            os_version="24.04",
+            machine_type="4x16",
+            services="analytics",
+            build="cbs",
+            finalizer="couchbase",
+        ),
+    )
+    assert g0.group == 0
+    assert g1.group == 1
+    assert g0.finalizer_group == 0
+    assert g1.finalizer_group == 1
 
-    def test_1(self):
-        args = ["create", "--build", "cbs", "--cloud", "aws", "--project", "pytest-aws", "--name", "test-cluster", "--auth_mode", "sso",
-                "--region", "us-east-2", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.create()
 
-    def test_2(self):
-        args = ["add", "--build", "cbs", "--cloud", "aws", "--project", "pytest-aws", "--name", "test-cluster", "--auth_mode", "sso",
-                "--region", "us-east-2", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.add()
+def test_deploy_and_status():
+    deploy = ProjectDeployService()
+    status = deploy.status(PROJECT)
+    assert status["project"]["name"] == PROJECT
+    result = deploy.deploy(PROJECT)
+    assert "foundations" in result
+    assert "nodes" in result
 
-    def test_3(self):
-        args = ["deploy", "--project", "pytest-aws"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.deploy()
 
-    def test_4(self):
-        args = ["list", "--project", "pytest-aws"]
-        username = "Administrator"
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        nodes = list(project.list(api=True))
-        connect_ip = nodes[0].get('public_ip')
-        password = project.credential()
+def test_import_and_destroy():
+    from couchformation.services.importer import ProjectImportService
 
-        time.sleep(1)
-        session = requests.Session()
-        retries = Retry(total=10,
-                        backoff_factor=0.01,
-                        status_forcelist=[500, 501, 503])
-        session.mount('http://', HTTPAdapter(max_retries=retries))
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-
-        response = requests.get(f"http://{connect_ip}:8091/pools/default", verify=False, timeout=15, auth=BasicAuth(username, password))
-
-        assert response.status_code == 200
-
-    def test_5(self):
-        args = ["destroy", "--project", "pytest-aws"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.destroy()
+    imported = ProjectImportService().import_project(PROJECT)
+    assert imported["project"]["name"] == PROJECT
+    destroyed = ProjectDeployService().destroy(PROJECT)
+    assert "destroyed" in destroyed
+    ProjectConfigService().delete_project(PROJECT)

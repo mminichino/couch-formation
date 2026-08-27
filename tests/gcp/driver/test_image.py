@@ -4,7 +4,8 @@ import pytest
 
 from couchformation.gcp.driver.image import Image
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_list_standard_returns_ubuntu_image(gcp_parameters):

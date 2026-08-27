@@ -1,72 +1,59 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import logging
-import warnings
-import unittest
-import pytest
 import time
-import base64
-from requests.auth import AuthBase
+import warnings
+import logging
+
+import pytest
+
+from couchformation.models.project import ProjectCreateRequest, ResourceCreateRequest
+from couchformation.services.config import ProjectConfigService
+from couchformation.services.deploy import ProjectDeployService
+
+pytestmark = [
+    pytest.mark.capella,
+    pytest.mark.cf_capella,
+]
 
 warnings.filterwarnings("ignore")
-current = os.path.dirname(os.path.realpath(__file__))
-parent = os.path.dirname(current)
-sys.path.append(parent)
-sys.path.append(current)
 
-from couchformation.project import Project
-from couchformation.cli.cloudmgr import CloudMgrCLI
+PROJECT = "pytest-capella-col-v5"
 
 
-class BasicAuth(AuthBase):
-
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def __call__(self, r):
-        auth_hash = f"{self.username}:{self.password}"
-        auth_bytes = auth_hash.encode('ascii')
-        auth_encoded = base64.b64encode(auth_bytes)
-        request_headers = {
-            "Authorization": f"Basic {auth_encoded.decode('ascii')}",
-        }
-        r.headers.update(request_headers)
-        return r
+@pytest.fixture(autouse=True)
+def _cleanup_logging():
+    yield
+    time.sleep(0.2)
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        for handler in getattr(logger, "handlers", []):
+            logger.removeHandler(handler)
 
 
-@pytest.mark.cf_columnar_cli
-@pytest.mark.order(1)
-class TestMainColumnar(unittest.TestCase):
+def test_create_columnar_resource():
+    svc = ProjectConfigService()
+    existing = svc.find_by_name(PROJECT)
+    if existing:
+        try:
+            ProjectDeployService().destroy(PROJECT)
+        except Exception:
+            pass
+        svc.delete_project(PROJECT)
+    project = svc.create_project(ProjectCreateRequest(name=PROJECT, cloud="capella", region="us-east-1"))
+    svc.create_resource(
+        project.uuid,
+        ResourceCreateRequest(
+            name="test-columnar",
+            cloud="capella",
+            region="us-east-1",
+            provider="aws",
+            quantity=1,
+            type="columnar",
+        ),
+    )
 
-    def setUp(self):
-        pass
 
-    def tearDown(self):
-        time.sleep(1)
-        loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
-        for logger in loggers:
-            handlers = getattr(logger, 'handlers', [])
-            for handler in handlers:
-                logger.removeHandler(handler)
-
-    def test_1(self):
-        args = ["create", "--build", "columnar", "--cloud", "capella", "--project", "pytest-columnar", "--name", "columnardb",
-                "--region", "us-east-1", "--quantity", "1", "--provider", "aws", "--machine_type", "4x32"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.create()
-
-    def test_2(self):
-        args = ["deploy", "--project", "pytest-columnar"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.deploy()
-
-    def test_3(self):
-        args = ["destroy", "--project", "pytest-columnar"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.destroy()
+def test_deploy_and_destroy_columnar():
+    ProjectDeployService().deploy(PROJECT)
+    ProjectDeployService().destroy(PROJECT)
+    ProjectConfigService().delete_project(PROJECT)

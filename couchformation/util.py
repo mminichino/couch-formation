@@ -201,37 +201,39 @@ class Synchronize(object):
 
 
 class PasswordUtility(object):
+    SPECIAL_CHARS = "#-_"
 
     def __init__(self):
         pass
 
-    @staticmethod
-    def valid_password(password: str, min_length: int = 8, max_length: int = 64) -> bool:
-        lower = 0
-        upper = 0
-        digit = 0
-        special = 0
-        if min_length <= len(password) <= max_length:
-            for i in password:
-                if i.islower():
-                    lower += 1
-                if i.isupper():
-                    upper += 1
-                if i.isdigit():
-                    digit += 1
-                if not i.isalnum():
-                    special += 1
-
-        if lower >= 1 and upper >= 1 and digit >= 1 and special >= 1:
-            return True
-        else:
+    @classmethod
+    def valid_password(cls, password: str, min_length: int = 8, max_length: int = 64) -> bool:
+        if not (min_length <= len(password) <= max_length):
             return False
+        if not password[0].isalnum():
+            return False
+        lower = upper = digit = special = 0
+        for char in password:
+            if char.islower():
+                lower += 1
+            elif char.isupper():
+                upper += 1
+            elif char.isdigit():
+                digit += 1
+            elif char in cls.SPECIAL_CHARS:
+                special += 1
+            else:
+                return False
+        return lower >= 1 and upper >= 1 and digit >= 1 and special == 1
 
-    def generate(self, length: int = 8):
+    def generate(self, length: int = 16) -> str:
+        alphabet = string.ascii_lowercase + string.ascii_uppercase + string.digits
         while True:
-            text = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits + '%@#', k=length))
-            password = str(text)
-            if self.valid_password(password, min_length=length):
+            chars = list(random.choices(alphabet, k=length))
+            special_index = random.randint(1, length - 1)
+            chars[special_index] = random.choice(self.SPECIAL_CHARS)
+            password = "".join(chars)
+            if self.valid_password(password, min_length=length, max_length=length):
                 return password
 
 

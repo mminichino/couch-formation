@@ -167,3 +167,5 @@ test/
 pytest.log
 failure.log
 prompts/
+.cursorrules
+.claude/

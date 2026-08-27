@@ -6,7 +6,8 @@ from couchformation.gcp.driver.base import CloudBase
 from couchformation.gcp.driver.disk import Disk
 from tests.gcp.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_disk_create_list_delete(gcp_parameters, cleanup):

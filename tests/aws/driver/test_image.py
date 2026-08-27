@@ -4,7 +4,8 @@ import pytest
 
 from couchformation.aws.driver.image import Image
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_list_standard_returns_ubuntu_image(aws_parameters):

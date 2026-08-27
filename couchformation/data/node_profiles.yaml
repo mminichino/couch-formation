@@ -1,106 +1,89 @@
----
 default:
-  - provisioner: remote
-    root: false
-    exclude:
-      - windows
-      - macos
-    commands:
-      - curl -LsSf https://astral.sh/uv/install.sh | sudo -E bash -s -
-      - curl -sfL https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/setup.sh | sudo -E bash -s - -s -p pyhostprep
-  - provisioner: winrm
-    root: true
-    exclude: []
-    commands:
-      - >-
-        iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/bootstrap.ps1)}"
-  - provisioner: docker
-    root: true
-    exclude: []
-    commands:
-      - curl -sfL https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/setup.sh | bash -s - -s -p pyhostprep
+- provisioner: remote
+  root: false
+  exclude:
+  - windows
+  - macos
+  commands:
+  - curl -LsSf https://astral.sh/uv/install.sh | sudo -E bash -s -
+  - curl -sfL https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/setup.sh
+    | sudo -E bash -s - -s -p pyhostprep
+- provisioner: winrm
+  root: true
+  exclude: []
+  commands:
+  - iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/bin/bootstrap.ps1)}"
 generic:
-  - provisioner: remote
-    root: true
-    exclude:
-      - windows
-      - macos
-    commands:
-      - bundlemgr -b Base
+- provisioner: remote
+  root: true
+  exclude:
+  - windows
+  - macos
+  commands:
+  - bundlemgr -b Base
 database:
-  - provisioner: remote
-    root: true
-    exclude:
-      - windows
-      - macos
-    commands:
-      - bundlemgr -b GenDBNode
+- provisioner: remote
+  root: true
+  exclude:
+  - windows
+  - macos
+  commands:
+  - bundlemgr -b GenDBNode
 appnode:
-  - provisioner: remote
-    root: true
-    exclude:
-      - windows
-      - macos
-    commands:
-      - bundlemgr -b GenAppNode
+- provisioner: remote
+  root: true
+  exclude:
+  - windows
+  - macos
+  commands:
+  - bundlemgr -b GenAppNode
 windev:
-  - provisioner: winrm
-    root: true
-    exclude: [ ]
-    commands:
-      - >-
-        iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/powershell/devserver.ps1)}"
+- provisioner: winrm
+  root: true
+  exclude: []
+  commands:
+  - iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/powershell/devserver.ps1)}"
 winsql:
-  - provisioner: winrm
-    root: true
-    exclude: [ ]
-    commands:
-      - >-
-        iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/powershell/sqlserver.ps1)}"
+- provisioner: winrm
+  root: true
+  exclude: []
+  commands:
+  - iex "& {$(irm https://raw.githubusercontent.com/couchbaselabs/host-prep-lib/main/powershell/sqlserver.ps1)}"
 cbs:
-  - provisioner: remote
-    root: true
-    commands:
-      - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }}
-      - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -o {{ OPTIONS }}
-      - swmgr cluster rebalance -l {{ IP_LIST }} -p '{{ PASSWORD }}'
-  - provisioner: docker
-    root: true
-    commands:
-      - swmgr cluster create -n {{ SERVICE_NAME }} -s {{ SERVICES }}
+- provisioner: remote
+  root: true
+  commands:
+  - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }}
+  - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{
+    IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -o {{
+    OPTIONS }}
+  - swmgr cluster rebalance -l {{ IP_LIST }} -p '{{ PASSWORD }}'
 cbscert:
-  - provisioner: remote
-    root: true
-    files:
-      ca_cert: ca.pem
-      ca_key: ca.key
-    commands:
-      - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }}
-      - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -o {{ OPTIONS }}
-      - swmgr cluster rebalance -l {{ IP_LIST }} -p '{{ PASSWORD }}'
-      - swmgr cluster ca_cert -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
-      - swmgr cluster node_cert -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
-      - swmgr cluster cert_auth -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
-  - provisioner: docker
-    root: true
-    files:
-      ca_cert: ca.pem
-      ca_key: ca.key
-    commands:
-      - swmgr cluster create -n {{ SERVICE_NAME }} -s {{ SERVICES }} -o {{ OPTIONS }}
-      - swmgr cluster ca_cert
-      - swmgr cluster node_cert
-      - swmgr cluster cert_auth
+- provisioner: remote
+  root: true
+  files:
+    ca_cert: ca.pem
+    ca_key: ca.key
+  commands:
+  - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }}
+  - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{
+    IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -o {{
+    OPTIONS }}
+  - swmgr cluster rebalance -l {{ IP_LIST }} -p '{{ PASSWORD }}'
+  - swmgr cluster ca_cert -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
+  - swmgr cluster node_cert -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
+  - swmgr cluster cert_auth -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }}
 sgw:
-  - provisioner: remote
-    root: true
-    commands:
-      - bundlemgr -b InstallSGW -V {{ SOFTWARE_VERSION }}
-      - swmgr gateway configure -l {{ CONNECT_LIST }} -p '{{ PASSWORD }}'
-      - bundlemgr -b EnableSGW
+- provisioner: remote
+  root: true
+  commands:
+  - bundlemgr -b InstallSGW -V {{ SOFTWARE_VERSION }}
+  - swmgr gateway configure -l {{ CONNECT_LIST }} -p '{{ PASSWORD }}'
+  - bundlemgr -b EnableSGW
 cbsc:
-  - provisioner: remote
-    root: true
-    commands:
-      - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }} -C
-      - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{ IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -C
+- provisioner: remote
+  root: true
+  commands:
+  - bundlemgr -b CBS -V {{ SOFTWARE_VERSION }} -C
+  - swmgr cluster create -n {{ SERVICE_NAME }} -g {{ NODE_ZONE }} -D /cbdata -l {{
+    IP_LIST }} -p '{{ PASSWORD }}' -h {{ HOST_LIST }} -L {{ SERVICE_LIST }} -C

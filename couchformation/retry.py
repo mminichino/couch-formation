@@ -1,81 +1,74 @@
 ##
 ##
 
-import time
-import asyncio
 import logging
-from typing import Callable
-from functools import wraps
+from typing import Callable, Optional, Tuple, Type, Union
+
+from tenacity import (
+    retry as tenacity_retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    RetryCallState,
+)
 
 logger = logging.getLogger('couchformation.retry')
 logger.addHandler(logging.NullHandler())
 
+ExceptionTypes = Union[Type[BaseException], Tuple[Type[BaseException], ...]]
+
+
+def _before_sleep(retry_state: RetryCallState) -> None:
+    fn_name = retry_state.fn.__name__ if retry_state.fn else "callable"
+    attempt = retry_state.attempt_number
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    logger.debug(f"{fn_name} will retry, number {attempt}: {exc}")
+
 
 def retry_inline(func, *args, retry_count=10, factor=0.01, **kwargs):
-    for retry_number in range(retry_count + 1):
-        try:
-            return func(*args, **kwargs)
-        except Exception as err:
-            if retry_number == retry_count:
-                logger.debug(f"{func.__name__} retry limit exceeded: {err}")
-                raise
-            logger.debug(f"{func.__name__} will retry, number {retry_number + 1}")
-            wait = factor
-            wait *= (2 ** (retry_number + 1))
-            time.sleep(wait)
+    @tenacity_retry(
+        reraise=True,
+        stop=stop_after_attempt(retry_count + 1),
+        wait=wait_exponential(multiplier=factor, exp_base=2),
+        before_sleep=_before_sleep,
+    )
+    def _wrapped():
+        return func(*args, **kwargs)
+
+    return _wrapped()
 
 
-def retry(retry_count=10,
-          factor=0.01,
-          allow_list=None,
-          always_raise_list=None
-          ) -> Callable:
+def retry(
+    retry_count: int = 10,
+    factor: float = 0.01,
+    allow_list: Optional[ExceptionTypes] = None,
+    always_raise_list: Optional[ExceptionTypes] = None,
+) -> Callable:
+    retry_condition = None
+    if allow_list is not None:
+        retry_condition = retry_if_exception_type(allow_list)
 
     def retry_handler(func):
-        if not asyncio.iscoroutinefunction(func):
-            @wraps(func)
-            def f_wrapper(*args, **kwargs):
-                for retry_number in range(retry_count + 1):
-                    try:
-                        return func(*args, **kwargs)
-                    except Exception as err:
-                        if always_raise_list and isinstance(err, always_raise_list):
-                            raise
+        kwargs = {
+            "reraise": True,
+            "stop": stop_after_attempt(retry_count + 1),
+            "wait": wait_exponential(multiplier=factor, exp_base=2),
+            "before_sleep": _before_sleep,
+        }
+        if retry_condition is not None:
+            kwargs["retry"] = retry_condition
 
-                        if allow_list and not isinstance(err, allow_list):
-                            raise
+        wrapped = tenacity_retry(**kwargs)(func)
 
-                        if retry_number == retry_count:
-                            logger.debug(f"{func.__name__} retry limit exceeded")
-                            raise
+        if always_raise_list is None:
+            return wrapped
 
-                        logger.debug(f"{func.__name__} will retry, number {retry_number + 1}")
-                        wait = factor
-                        wait *= (2 ** (retry_number + 1))
-                        time.sleep(wait)
+        def guarded(*args, **inner_kwargs):
+            try:
+                return wrapped(*args, **inner_kwargs)
+            except always_raise_list:
+                raise
 
-            return f_wrapper
-        else:
-            @wraps(func)
-            async def f_wrapper(*args, **kwargs):
-                for retry_number in range(retry_count + 1):
-                    try:
-                        return await func(*args, **kwargs)
-                    except Exception as err:
-                        if always_raise_list and isinstance(err, always_raise_list):
-                            raise
+        return guarded
 
-                        if allow_list and not isinstance(err, allow_list):
-                            raise
-
-                        if retry_number == retry_count:
-                            logger.debug(f"{func.__name__} retry limit exceeded")
-                            raise
-
-                        logger.debug(f"{func.__name__} will retry, number {retry_number + 1}")
-                        wait = factor
-                        wait *= (2 ** (retry_number + 1))
-                        time.sleep(wait)
-
-            return f_wrapper
     return retry_handler

@@ -5,7 +5,8 @@ import pytest
 from couchformation.azure.driver.machine import MachineType
 from couchformation.azure.driver.resource_group import ResourceGroup
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_get_machine_returns_match(azure_parameters):

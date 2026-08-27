@@ -8,6 +8,11 @@ import warnings
 import pytest
 import time
 
+
+pytestmark = [
+    pytest.mark.regression,
+    pytest.mark.cf_gcp,
+]
 warnings.filterwarnings("ignore")
 current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)

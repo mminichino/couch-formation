@@ -56,22 +56,25 @@ class AzureDeployment(object):
         self.volume_size = parameters.get('volume_size') if parameters.get('volume_size') else "256"
         self.services = parameters.get('services') if parameters.get('services') else "default"
 
-        project_uid = MetadataManager(self.project).project_uid
-        self.asset_prefix = f"cf-{project_uid}"
-        self.rg_name = f"{self.asset_prefix}-rg"
+        from couchformation.cloud_common import asset_names, resolve_project_uuid
+        from couchformation.naming import ResourceName
+
+        self.project_uuid = resolve_project_uuid(self.parameters)
+        names = asset_names(self.project_uuid)
+        self.asset_prefix = names["asset_prefix"]
+        self.rg_name = names["rg_name"]
         self.node_name = f"{self.name}-node-{self.number:02d}"
         self.boot_disk = f"{self.name}-boot-{self.number:02d}"
         self.swap_disk = f"{self.name}-swap-{self.number:02d}"
         self.data_disk = f"{self.name}-data-{self.number:02d}"
         self.node_pub_ip = f"{self.name}-node-{self.number:02d}-pub-ip"
         self.node_nic = f"{self.name}-node-{self.number:02d}-nic"
-        node_code = UUIDGen().text_hash(self.node_name)
-        self.node_encoded = f"{self.asset_prefix}-{node_code}-node"
-        self.boot_encoded = f"{self.asset_prefix}-{node_code}-boot"
-        self.swap_encoded = f"{self.asset_prefix}-{node_code}-swap"
-        self.data_encoded = f"{self.asset_prefix}-{node_code}-data"
-        self.pub_ip_encoded = f"{self.asset_prefix}-{node_code}-pub-ip"
-        self.nic_encoded = f"{self.asset_prefix}-{node_code}-nic"
+        self.node_encoded = ResourceName.build("node", self.project_uuid, int(self.number))
+        self.boot_encoded = ResourceName.build("boot", self.project_uuid, int(self.number))
+        self.swap_encoded = ResourceName.build("swap", self.project_uuid, int(self.number))
+        self.data_encoded = ResourceName.build("data", self.project_uuid, int(self.number))
+        self.pub_ip_encoded = ResourceName.build("pip", self.project_uuid, int(self.number))
+        self.nic_encoded = ResourceName.build("nic", self.project_uuid, int(self.number))
 
         cm = ConfigurationManager()
         if cm.get('ssh.key') and not self.ssh_key:
@@ -332,3 +335,75 @@ class AzureDeployment(object):
             return value
         else:
             raise AzureNodeError("names must only contain letters, numbers, dashes and underscores")
+
+
+class Node:
+    def create(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "azure"
+        deployment = AzureDeployment(params)
+        state = deployment.deploy() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="azure",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            node_name=state.get("name") or f"{request.name}-node-{request.number:02d}",
+            instance_id=state.get("instance_id") or state.get("name"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services") or request.services,
+            state=state,
+        )
+
+    def destroy(self, request):
+        from couchformation.cloud_common import resolve_project_uuid, state_to_dict
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "azure"
+        deployment = AzureDeployment(params)
+        deployment.destroy()
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="azure",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            state=state_to_dict(deployment.state),
+        )
+
+    def info(self, request):
+        from couchformation.cloud_common import resolve_project_uuid
+        from couchformation.models.cloud_ops import NodeResult
+
+        params = request.to_parameters()
+        params["project_uuid"] = resolve_project_uuid(params)
+        params["cloud"] = "azure"
+        deployment = AzureDeployment(params)
+        state = deployment.info() or {}
+        return NodeResult(
+            project=request.project,
+            project_uuid=request.project_uuid,
+            cloud="azure",
+            name=request.name,
+            group=request.group,
+            number=request.number,
+            instance_id=state.get("instance_id") or state.get("name"),
+            public_ip=state.get("public_ip"),
+            private_ip=state.get("private_ip"),
+            zone=state.get("zone"),
+            username=state.get("username"),
+            services=state.get("services"),
+            state=state,
+        )

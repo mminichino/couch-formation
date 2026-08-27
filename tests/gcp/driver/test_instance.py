@@ -13,7 +13,8 @@ from couchformation.gcp.driver.subnet import Subnet
 from couchformation.ssh import SSHUtil
 from tests.gcp.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_gcp
+pytestmark = [pytest.mark.driver, pytest.mark.cf_gcp]
+
 
 
 def test_instance_run_terminate(gcp_parameters, cidr_util, cleanup):

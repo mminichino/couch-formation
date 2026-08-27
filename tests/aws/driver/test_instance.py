@@ -13,7 +13,8 @@ from couchformation.ssh import SSHUtil
 from couchformation.util import parameter_to_dict
 from tests.aws.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_aws
+pytestmark = [pytest.mark.driver, pytest.mark.cf_aws]
+
 
 
 def test_instance_run_terminate(aws_parameters, cidr_util, cleanup):

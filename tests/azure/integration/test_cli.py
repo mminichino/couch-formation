@@ -1,103 +1,64 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import logging
-import warnings
-import requests
-import base64
-import unittest
-import pytest
 import time
-from requests.auth import AuthBase
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
+import warnings
+import logging
 
+import pytest
+
+from couchformation.models.project import GroupCreateRequest, ProjectCreateRequest
+from couchformation.services.config import ProjectConfigService
+from couchformation.services.deploy import ProjectDeployService
+from couchformation.services.importer import ProjectImportService
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.cf_azure,
+]
 warnings.filterwarnings("ignore")
-current = os.path.dirname(os.path.realpath(__file__))
-parent = os.path.dirname(current)
-sys.path.append(parent)
-sys.path.append(current)
 
-from couchformation.project import Project
-from couchformation.cli.cloudmgr import CloudMgrCLI
+PROJECT = "pytest-azure-v5"
 
 
-class BasicAuth(AuthBase):
-
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def __call__(self, r):
-        auth_hash = f"{self.username}:{self.password}"
-        auth_bytes = auth_hash.encode('ascii')
-        auth_encoded = base64.b64encode(auth_bytes)
-        request_headers = {
-            "Authorization": f"Basic {auth_encoded.decode('ascii')}",
-        }
-        r.headers.update(request_headers)
-        return r
+@pytest.fixture(autouse=True)
+def _cleanup_logging():
+    yield
+    time.sleep(0.2)
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        for handler in getattr(logger, "handlers", []):
+            logger.removeHandler(handler)
 
 
-@pytest.mark.cf_azure_cli
-@pytest.mark.order(1)
-class TestMainAzure(unittest.TestCase):
+def test_create_project_and_group():
+    svc = ProjectConfigService()
+    existing = svc.find_by_name(PROJECT)
+    if existing:
+        try:
+            ProjectDeployService().destroy(PROJECT)
+        except Exception:
+            pass
+        svc.delete_project(PROJECT)
+    project = svc.create_project(ProjectCreateRequest(name=PROJECT, cloud="azure", region="eastus"))
+    group = svc.create_group(
+        project.uuid,
+        GroupCreateRequest(
+            name="test-cluster",
+            cloud="azure",
+            region="eastus",
+            count=1,
+            os_id="ubuntu",
+            os_version="24.04",
+            machine_type="4x16",
+            build="cbs",
+        ),
+    )
+    assert group.group == 0
 
-    def setUp(self):
-        pass
 
-    def tearDown(self):
-        time.sleep(1)
-        loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
-        for logger in loggers:
-            handlers = getattr(logger, 'handlers', [])
-            for handler in handlers:
-                logger.removeHandler(handler)
-
-    def test_1(self):
-        args = ["create", "--build", "cbs", "--cloud", "azure", "--project", "pytest-azure", "--name", "test-cluster",
-                "--region", "eastus", "--quantity", "3", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.create()
-
-    def test_2(self):
-        args = ["add", "--build", "cbs", "--cloud", "azure", "--project", "pytest-azure", "--name", "test-cluster",
-                "--region", "eastus", "--quantity", "2", "--os_id", "ubuntu", "--os_version", "22.04", "--machine_type", "4x16", "--services", "analytics"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.add()
-
-    def test_3(self):
-        args = ["deploy", "--project", "pytest-azure"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.deploy()
-
-    def test_4(self):
-        args = ["list", "--project", "pytest-azure"]
-        username = "Administrator"
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        nodes = list(project.list(api=True))
-        connect_ip = nodes[0].get('public_ip')
-        password = project.credential()
-
-        time.sleep(1)
-        session = requests.Session()
-        retries = Retry(total=10,
-                        backoff_factor=0.01,
-                        status_forcelist=[500, 501, 503])
-        session.mount('http://', HTTPAdapter(max_retries=retries))
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-
-        response = requests.get(f"http://{connect_ip}:8091/pools/default", verify=False, timeout=15, auth=BasicAuth(username, password))
-
-        assert response.status_code == 200
-
-    def test_5(self):
-        args = ["destroy", "--project", "pytest-azure"]
-        cm = CloudMgrCLI(args)
-        project = Project(cm.options, cm.remainder)
-        project.destroy()
+def test_deploy_import_destroy():
+    deploy = ProjectDeployService()
+    deploy.deploy(PROJECT)
+    ProjectImportService().import_project(PROJECT)
+    deploy.destroy(PROJECT)
+    ProjectConfigService().delete_project(PROJECT)

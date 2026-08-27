@@ -5,7 +5,8 @@ import pytest
 from couchformation.azure.driver.network import Network, SecurityGroup, Subnet
 from tests.azure.driver.conftest import unique_name
 
-pytestmark = pytest.mark.cf_azure
+pytestmark = [pytest.mark.driver, pytest.mark.cf_azure]
+
 
 
 def test_network_create_list_delete(azure_parameters, azure_rg, cidr_util, cleanup):
