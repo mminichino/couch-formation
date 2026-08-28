@@ -169,3 +169,4 @@ failure.log
 prompts/
 .cursorrules
 .claude/
+.DS_Store
