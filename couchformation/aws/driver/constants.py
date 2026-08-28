@@ -169,8 +169,8 @@ class AWSImageOwners(object):
             "os_id": "ubuntu",
             "user": "ubuntu",
             "feature": None,
-            "pattern": r"ubuntu/images/hvm-ssd/ubuntu-*-server-*",
-            "version": r"ubuntu/images/hvm-ssd/ubuntu-.*-(.+?)-.*-server-.*"
+            "pattern": r"ubuntu/images/hvm-ssd*/ubuntu-*-server-*",
+            "version": r"ubuntu/images/hvm-ssd.*/ubuntu-.*-([0-9]+\.[0-9]+)-.*-server-.*"
         },
         {
             "owner_id": "099720109477",
@@ -178,8 +178,8 @@ class AWSImageOwners(object):
             "os_id": "ubuntu-pro",
             "user": "ubuntu",
             "feature": None,
-            "pattern": r"ubuntu-pro-server/images/hvm-ssd/ubuntu-*-pro-server-*",
-            "version": r"ubuntu-pro-server/images/hvm-ssd/ubuntu-.*-(.+?)-.*-pro-server-.*"
+            "pattern": r"ubuntu-pro-server/images/hvm-ssd*/ubuntu-*-pro-server-*",
+            "version": r"ubuntu-pro-server/images/hvm-ssd.*/ubuntu-.*-([0-9]+\.[0-9]+)-.*-pro-server-.*"
         },
         {
             "owner_id": "125523088429",

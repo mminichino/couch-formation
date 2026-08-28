@@ -50,7 +50,7 @@ class GCPDeployment(object):
         self.machine_name = parameters.get('machine_name')
         self.ports = parameters.get('ports')
         self.volume_size = parameters.get('volume_size') if parameters.get('volume_size') else "256"
-        self.services = parameters.get('services') if parameters.get('services') else "default"
+        self.services = parameters.get('services') if parameters.get('services') and parameters.get('services') != 'default' else "data,index,query,fts"
 
         from couchformation.cloud_common import asset_names, resolve_project_uuid
         from couchformation.naming import ResourceName

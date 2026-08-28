@@ -99,7 +99,7 @@ class GCPImageProjects(object):
         {
             "project": 'ubuntu-os-pro-cloud',
             "description": "Ubuntu Pro Linux",
-            "os_id": "ubuntu",
+            "os_id": "ubuntu-pro",
             "user": "ubuntu",
             "pattern": r"ubuntu-pro-(.+?)-*-v*"
         },

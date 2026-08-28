@@ -18,7 +18,7 @@ class DNS(CloudBase):
 
     def create(self, domain: str, vpc_id: str = None, region: str = None):
         private = vpc_id is not None
-        zone_region = region if region is not None else self.aws_region
+        zone_region = region if region is not None else self.region
         kwargs = {
             'HostedZoneConfig': {
                 'PrivateZone': private

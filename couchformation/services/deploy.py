@@ -61,12 +61,15 @@ class ProjectDeployService:
             foundation_result = self._deploy_foundation(project, cloud, region)
             results["foundations"].append(foundation_result.model_dump())
 
+        deployed_groups: list[tuple[NodeGroupConfig, list[NodeResult]]] = []
         for group in groups:
             if group.cloud == "capella":
                 continue
             node_results = self._deploy_group_nodes(project, group, password)
             results["nodes"].extend([n.model_dump() for n in node_results])
-            self._run_finalizers(project, group, node_results, password)
+            deployed_groups.append((group, node_results))
+
+        self._run_finalizers(project, deployed_groups, password)
 
         for resource in resources:
             resource_result = self._deploy_resource(project, resource, password)
@@ -89,6 +92,7 @@ class ProjectDeployService:
                 **{k: v for k, v in resource.model_dump().items() if k not in {"name", "cloud", "region", "parameters"}},
             )
             module.destroy(req)
+            self._delete_state(project.uuid, f"resource:{resource.name}")
             results["destroyed"].append({"type": "resource", "name": resource.name})
 
         for group in reversed(self.config_service.list_groups(project.uuid)):
@@ -106,6 +110,7 @@ class ProjectDeployService:
                     number=number,
                 )
                 module.destroy(req)
+                self._delete_state(project.uuid, f"node:{group.name}:{number}")
                 results["destroyed"].append({"type": "node", "name": group.name, "number": number})
 
         clouds_regions = {
@@ -122,6 +127,8 @@ class ProjectDeployService:
                 region=region,
             )
             module.destroy(req)
+            self._delete_state(project.uuid, f"foundation:{cloud}:{region}")
+            self._delete_state(project.uuid, f"peer:{cloud}:{region}")
             results["destroyed"].append({"type": "foundation", "cloud": cloud, "region": region})
 
         return results
@@ -262,10 +269,10 @@ class ProjectDeployService:
         self._save_state(project.uuid, state_key, result.model_dump())
         return result
 
-    def _run_finalizers(self, project: ProjectConfig, group: NodeGroupConfig, nodes, password: str) -> None:
+    def _run_finalizers(self, project: ProjectConfig, group_or_groups: Any, password: str, nodes: Any = None) -> None:
         from couchformation.finalizers.runner import FinalizerRunner
 
-        FinalizerRunner().run(project=project, group=group, nodes=nodes, password=password)
+        FinalizerRunner().run(project=project, group_or_groups=group_or_groups, nodes=nodes, password=password)
 
     def _save_state(self, project_uuid: str, key: str, value: dict) -> None:
         state_db = KeyValueStore(get_project_state_db(project_uuid), "state")
@@ -282,3 +289,8 @@ class ProjectDeployService:
             return json.loads(raw)
         except (TypeError, json.JSONDecodeError):
             return None
+
+    def _delete_state(self, project_uuid: str, key: str) -> None:
+        state_db = KeyValueStore(get_project_state_db(project_uuid), "state")
+        if key in state_db:
+            del state_db[key]

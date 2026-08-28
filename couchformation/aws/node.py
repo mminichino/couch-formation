@@ -57,7 +57,7 @@ class AWSDeployment(object):
         self.volume_iops = parameters.get('volume_iops') if parameters.get('volume_iops') \
             else next((aws_storage_matrix[s] for s in aws_storage_matrix if s >= int(self.volume_size)), "3000")
         self.ephemeral = parameters.get('ephemeral') if parameters.get('ephemeral') else False
-        self.services = parameters.get('services') if parameters.get('services') else "default"
+        self.services = parameters.get('services') if parameters.get('services') and parameters.get('services') != 'default' else "data,index,query,fts"
 
         from couchformation.cloud_common import asset_names, merge_project_tags, resolve_project_uuid
         from couchformation.naming import ResourceName

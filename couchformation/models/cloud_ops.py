@@ -88,7 +88,7 @@ class NodeRequest(CloudModel):
     machine_type: Optional[str] = "4x16"
     machine_name: Optional[str] = None
     quantity: Optional[int] = 1
-    services: Optional[str] = "default"
+    services: Optional[str] = "data,index,query,fts"
     volume_size: Optional[str] = "256"
     volume_iops: Optional[str] = None
     volume_type: Optional[str] = None

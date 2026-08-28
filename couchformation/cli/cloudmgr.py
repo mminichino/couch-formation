@@ -77,9 +77,12 @@ def init_cmd(
 
 
 @config_app.command("get")
-def config_get(key: Optional[str] = typer.Argument(None)):
+def config_get(
+    key: Optional[str] = typer.Argument(None, help="Configuration parameter key"),
+    all: bool = typer.Option(False, "--all", "-a", help="Display all set configuration parameters"),
+):
     cm = ConfigurationManager()
-    if key is None:
+    if all or key is None:
         for k, v in cm.list().items():
             typer.echo(f"{k} = {v}")
         return
@@ -156,7 +159,7 @@ def project_create_group(
     os_id: str = typer.Option("ubuntu", "--os-id"),
     os_version: str = typer.Option("24.04", "--os-version"),
     machine_type: Optional[str] = typer.Option("4x16", "--machine-type"),
-    services: Optional[str] = typer.Option("default", "--services"),
+    services: Optional[str] = typer.Option("data,index,query,fts", "--services"),
     finalizer: Optional[str] = typer.Option(None, "--finalizer"),
     variable: Optional[list[str]] = typer.Option(None, "--variable", help="key=value (repeatable)"),
 ):

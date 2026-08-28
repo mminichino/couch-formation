@@ -90,11 +90,14 @@ class ConfigurationManager(object):
     @staticmethod
     def key_split(key: str):
         vector = key.split('.', 1)
-        if len(vector) != 2:
+        if len(vector) == 2:
+            table_name = vector[0]
+            value_name = vector[1]
+        elif len(vector) == 1:
+            table_name = "global"
+            value_name = vector[0]
+        else:
             raise ConfigError(f"Malformed key {key}")
-
-        table_name = vector[0]
-        value_name = vector[1]
 
         return table_name, value_name
 

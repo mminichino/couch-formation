@@ -95,30 +95,29 @@ class RunSSHCommand(object):
                 wait *= n_retry
                 time.sleep(wait)
 
-    def exec(self, connect_retry=35, command_retry=10, factor=0.5):
+    def exec(self, connect_retry=35, command_retry=5, factor=0.5):
         bufsize = 4096
 
         ssh = self.ssh_connect(retry_count=connect_retry, factor=factor)
 
         for retry_number in range(command_retry):
             try:
-                stdin, stdout, stderr = ssh.exec_command(self.command, bufsize=bufsize, timeout=10)
+                stdin, stdout, stderr = ssh.exec_command(self.command, bufsize=bufsize, timeout=None)
                 channel = stdout.channel
                 stdin.close()
                 channel.shutdown_write()
+                stdout_bytes = stdout.read()
+                stderr_bytes = stderr.read()
                 exit_code = channel.recv_exit_status()
-                timeout = 5
-                end_time = time.time() + timeout
-                while not stdout.channel.eof_received:
-                    time.sleep(0.5)
-                    if time.time() > end_time:
-                        stdout.channel.close()
-                        break
                 ssh.close()
-                return exit_code, stdout, stderr
+                return exit_code, io.StringIO(stdout_bytes.decode('utf-8', errors='replace')), io.StringIO(stderr_bytes.decode('utf-8', errors='replace'))
             except Exception as err:
                 n_retry = retry_number + 1
                 if n_retry == command_retry:
+                    try:
+                        ssh.close()
+                    except Exception:
+                        pass
                     raise RuntimeError(f"command failed on {self.hostname}: {err}")
                 logger.info(f"Retrying command on {self.hostname}")
                 self.file_output.error(f"retrying command exec: count {n_retry}: {err}")

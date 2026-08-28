@@ -54,7 +54,7 @@ class AzureDeployment(object):
         self.ultra = parameters.get('ultra') if parameters.get('ultra') else False
         self.password = parameters.get('password') if parameters.get('password') else PasswordUtility().generate(16)
         self.volume_size = parameters.get('volume_size') if parameters.get('volume_size') else "256"
-        self.services = parameters.get('services') if parameters.get('services') else "default"
+        self.services = parameters.get('services') if parameters.get('services') and parameters.get('services') != 'default' else "data,index,query,fts"
 
         from couchformation.cloud_common import asset_names, resolve_project_uuid
         from couchformation.naming import ResourceName

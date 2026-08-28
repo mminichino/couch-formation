@@ -25,7 +25,7 @@ def asset_names(project_uuid: str) -> dict[str, str]:
         "asset_prefix": f"cf-{hex_id}",
         "vpc_name": ResourceName.build("vpc", project_uuid, 1),
         "subnet_name": ResourceName.build("subnet", project_uuid, 1),
-        "sg_name": ResourceName.build("sg", project_uuid, 1),
+        "sg_name": ResourceName.build("secgrp", project_uuid, 1),
         "ig_name": ResourceName.build("igw", project_uuid, 1),
         "rt_name": ResourceName.build("rt", project_uuid, 1),
         "key_name": ResourceName.build("key", project_uuid, 1),

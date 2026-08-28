@@ -38,7 +38,7 @@ class GroupCreateRequest(ProjectModel):
     os_arch: str = "x86_64"
     machine_type: Optional[str] = "4x16"
     machine_name: Optional[str] = None
-    services: Optional[str] = "default"
+    services: Optional[str] = "data,index,query,fts"
     volume_size: Optional[str] = "256"
     volume_iops: Optional[str] = None
     volume_type: Optional[str] = None
@@ -74,7 +74,7 @@ class NodeGroupConfig(ProjectModel):
     os_arch: Optional[str] = "x86_64"
     machine_type: Optional[str] = "4x16"
     machine_name: Optional[str] = None
-    services: Optional[str] = "default"
+    services: Optional[str] = "data,index,query,fts"
     volume_size: Optional[str] = "256"
     volume_iops: Optional[str] = None
     volume_type: Optional[str] = None

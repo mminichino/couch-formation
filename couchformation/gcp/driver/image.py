@@ -95,8 +95,11 @@ class Image(CloudBase):
                 for image in image_list:
                     logger.debug(f"Found image -> {image['name']}")
                     match = re.search(image_type['pattern'], image['name'])
-                    if match and (match.group(1) == version or match.group(1) == ''.join([letter for letter in '22.04' if letter.isalnum()])):
-                        filtered_images.append(image)
+                    if match:
+                        matched_version = match.group(1)
+                        version_clean = ''.join([c for c in version if c.isalnum()])
+                        if matched_version == version or matched_version == version_clean or matched_version == version.replace('.', '-'):
+                            filtered_images.append(image)
                 if len(filtered_images) > 0:
                     filtered_images.sort(key=lambda i: datetime.fromisoformat(i['date']))
                     result_image = filtered_images[-1]
@@ -107,10 +110,10 @@ class Image(CloudBase):
                         image_project=image_type['project']
                     ))
                     result_list.append(result_image)
-                if len(result_list) > 0:
-                    logger.debug(f"Selected image -> {result_list[-1]}")
-                return result_list[-1]
-        return result_list
+        if len(result_list) > 0:
+            logger.debug(f"Selected image -> {result_list[-1]}")
+            return result_list[-1]
+        return None
 
     @staticmethod
     def image_user(os_id: str):

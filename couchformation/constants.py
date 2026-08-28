@@ -38,7 +38,8 @@ PROJECT_RESOURCES = "resources.db"
 PROJECT_STATE = "state.db"
 
 DEFAULT_FINALIZER = "default"
-HOST_PREP_VERSION = "1.0.0"
+DEFAULT_SERVICES = "data,index,query,fts"
+HOST_PREP_VERSION = "2.0.0"
 DEFAULT_OS_ID = "ubuntu"
 DEFAULT_OS_VERSION = "24.04"
 
@@ -68,10 +69,10 @@ OS_VERSION_LIST = {
     'fedora': ['34'],
     'sles': ['12', '15'],
     'opensuse-leap': ['15'],
-    'ubuntu': ['14.04', '16.04', '18.04', '20.04', '22.04'],
-    'ubuntu-pro': ['16.04', '18.04', '20.04', '22.04'],
-    'debian': ['10', '11'],
-    'windows': ['2019', '2022'],
+    'ubuntu': ['14.04', '16.04', '18.04', '20.04', '22.04', '24.04'],
+    'ubuntu-pro': ['16.04', '18.04', '20.04', '22.04', '24.04'],
+    'debian': ['10', '11', '12'],
+    'windows': ['2019', '2022', '2025'],
     'macos': ['13', '14'],
     'arch': []
 }
